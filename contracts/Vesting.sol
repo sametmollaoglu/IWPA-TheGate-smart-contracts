@@ -271,9 +271,10 @@ contract Vesting is Ownable {
      * @notice Deletes vesting schedule by using beneficiary address and ico type
      * @param _beneficiary Beneficiary vesting schedule struct.
      * @param _icoType Beneficiary vesting schedule struct.
-     */
+     
     function deleteSchedule(address _beneficiary, uint256 _icoType) external {
         totalAllocation -= vestingSchedules[_beneficiary][_icoType].allocation;
         delete vestingSchedules[_beneficiary][_icoType];
     }
+    */
 }

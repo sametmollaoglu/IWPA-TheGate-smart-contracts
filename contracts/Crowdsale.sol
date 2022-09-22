@@ -65,33 +65,11 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     /**
      * @param _token Address of the token being sold (token contract).
      * @param _usdtWallet Address where collected funds will be forwarded to.
-     * @param _vesting Address of the vesting for inherit Vesting contract.
-     * @param _rate0 How many token units a buyer gets per USDT at seed sale.
-     * @param _supply0 Number of token will be in seed sale.
-     * @param _cliffMonths0 Number of cliff months of seed sale.
-     * @param _vestingMonths0 Number of vesting months of seed sale.
-     * @param _unlockRate0 Unlock rate of the seed sale.
-     * @param _rate1 How many token units a buyer gets per USDT at private sale.
-     * @param _supply1 Number of token will be in private sale.
-     * @param _cliffMonths1 Number of cliff months of private sale.
-     * @param _vestingMonths1 Number of cliff months of private sale.
-     * @param _unlockRate1 Unlock rate of the private sale.
      */
     constructor(
-        IERC20 _token,
-        address payable _usdtWallet,
-        address _vesting,
-        uint256 _rate0,
-        uint256 _supply0,
-        uint256 _cliffMonths0,
-        uint256 _vestingMonths0,
-        uint8 _unlockRate0,
-        uint256 _rate1,
-        uint256 _supply1,
-        uint256 _cliffMonths1,
-        uint256 _vestingMonths1,
-        uint8 _unlockRate1
-    ) Vesting(address(_token)) {
+        address _token,
+        address payable _usdtWallet
+    ) Vesting(_token) {
         require(
             address(_token) != address(0),
             "ERROR at Crowdsale constructor: Token contract shouldn't be zero address."
@@ -100,58 +78,58 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             _usdtWallet != address(0),
             "ERROR at Crowdsale constructor: USDT wallet shouldn't be zero address."
         );
-        require(
-            _vesting != address(0),
-            "ERROR at Crowdsale constructor: Vesting contract shouldn't be zero address."
-        );
-        require(
-            _rate0 > 0,
-            "ERROR at Crowdsale constructor: Rate for seed sale should be bigger than zero."
-        );
-        require(
-            _supply0 > 0,
-            "ERROR at Crowdsale constructor: Supply for seed sale should be bigger than zero."
-        );
-        require(
-            _rate1 > 0,
-            "ERROR at Crowdsale constructor: Rate for private sale should be bigger than zero."
-        );
-        require(
-            _supply1 > 0,
-            "ERROR at Crowdsale constructor: Supply for private sale should be bigger than zero."
-        );
-
+       
         token = IERC20(_token);
         usdtWallet = _usdtWallet;
-        vesting = Vesting(_vesting);
 
         onlyWhitelist[0] = true;
         onlyWhitelist[1] = true;
+    }
 
-        ICOdatas[0] = ICOdata({
-            ICOrate: _rate0,
-            ICOsupply: _supply0,
-            ICOusdtRaised: 0,
-            ICOtokenAllocated: 0,
-            ICOtokenSold: 0,
-            ICOstate: IcoState.nonActive,
-            ICOnumberOfCliff: _cliffMonths0,
-            ICOnumberOfVesting: _vestingMonths0,
-            ICOunlockRate: _unlockRate0
-        }); //seed
+    /*
+    * @param _rate How many token units a buyer gets per USDT at seed sale.
+     * @param _supply Number of token will be in seed sale.
+     * @param _cliffMonths Number of cliff months of seed sale.
+     * @param _vestingMonths Number of vesting months of seed sale.
+     * @param _unlockRate Unlock rate of the seed sale.
+    */
+    function createICO (
+        uint256 _rate,
+        uint256 _supply,
+        uint256 _cliffMonths,
+        uint256 _vestingMonths,
+        uint8 _unlockRate
+    ) external onlyOwner {
+         require(
+            _rate > 0,
+            "ERROR at Crowdsale constructor: Rate for seed sale should be bigger than zero."
+        );
+        require(
+            _supply > 0,
+            "ERROR at Crowdsale constructor: Supply for seed sale should be bigger than zero."
+        );
+        require(
+            _rate > 0,
+            "ERROR at Crowdsale constructor: Rate for private sale should be bigger than zero."
+        );
+        require(
+            _supply > 0,
+            "ERROR at Crowdsale constructor: Supply for private sale should be bigger than zero."
+        );
+
         ICOdatas.push(
             ICOdata({
-                ICOrate: _rate1,
-                ICOsupply: _supply1,
+                ICOrate: _rate,
+                ICOsupply: _supply,
                 ICOusdtRaised: 0,
                 ICOtokenAllocated: 0,
                 ICOtokenSold: 0,
                 ICOstate: IcoState.nonActive,
-                ICOnumberOfCliff: _cliffMonths1,
-                ICOnumberOfVesting: _vestingMonths1,
-                ICOunlockRate: _unlockRate1
+                ICOnumberOfCliff: _cliffMonths,
+                ICOnumberOfVesting: _vestingMonths,
+                ICOunlockRate: _unlockRate
             })
-        ); //private
+        );
     }
 
     /**
@@ -227,7 +205,6 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         );
         ICOdatas[_icoType].ICOtokenAllocated -= vesting
             .getScheduleTokenAllocation(beneficiary, _icoType);
-        vesting.deleteSchedule(beneficiary, _icoType);
     }
 
     /**
@@ -297,7 +274,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         pure
         returns (uint256)
     {
-        return _usdtAmount.mul(_ICOrate);
+        return _usdtAmount.div(_ICOrate);
     }
 
     /**
