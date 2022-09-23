@@ -22,9 +22,9 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     ICOdata[] private ICOdatas;
 
     mapping(address => mapping(uint256 => bool)) whitelist;
-    bool[] onlyWhitelist;
+    bool[2] onlyWhitelist;
 
-    IERC20 public usdt = IERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7);
+    IERC20 public usdt = IERC20(0xdAC17F958D2ee523a2206206994597C13D831ec7); //prod tether
 
     //State of ICO sales
     enum IcoState {
@@ -198,13 +198,16 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         isIcoActive(_icoType)
     {
         address beneficiary = msg.sender;
-        _processPurchaseUSDT();
-        ICOdatas[_icoType].ICOusdtRaised -= vesting.getScheduleInvestedUsdt(
+        uint releasableUsdtAmount = vesting.getReleasableUsdtAmount(
             beneficiary,
             _icoType
         );
+        _processPurchaseUSDT(releasableUsdtAmount, beneficiary);
+        ICOdatas[_icoType].ICOusdtRaised -= releasableUsdtAmount;
+
+        //tether alıyor token sayımızı arttırıyor çünkü geri veriyor
         ICOdatas[_icoType].ICOtokenAllocated -= vesting
-            .getScheduleTokenAllocation(beneficiary, _icoType);
+            .getReleasableAmount(beneficiary, _icoType);
     }
 
     /**
@@ -244,8 +247,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     /**
      * @dev Beneficiary can withdraw exactly amount of deposited USDT investing.
      */
-    function _processPurchaseUSDT() internal {
-        usdt.approve(usdtWallet, 0);
+    function _processPurchaseUSDT(uint releasedUsdt, address beneficiary) internal {
+        usdt.approve(beneficiary, releasedUsdt);
     }
 
     /**

@@ -56,7 +56,8 @@ contract Vesting is Ownable {
         uint256 unlockRate; //Initial vesting of beneficiary
         bool isRevocable; // Whether or not the vesting is revocable
         bool revoked; // Whether or not the vesting has been revoked
-        uint256 allocation; // Total amount of tokens to be released at the end of the vesting
+        uint256 cliffAndVestingAllocation; // Total amount of tokens to be released at the end of the vesting cliff + vesting
+        uint256 vestingAllocation; // Total amount of tokens to be released at the end of the vesting only vesting
         bool tgeVested; //Whether or not the tge has been vested
         uint256 releasedPeriod; //Already released months
         uint256 icoType; //Type of ICO  0=>seed, 1=>private
@@ -106,6 +107,9 @@ contract Vesting is Ownable {
             "ERROR at createVestingSchedule: Allocation must be > 0"
         );
 
+        uint totalVestingAllocation = (_allocation - (_unlockRate *
+                _allocation) / 100);
+
         vestingSchedules[_beneficiary][_IcoType] = VestingScheduleStruct(
             _beneficiary,
             block.timestamp,
@@ -115,6 +119,7 @@ contract Vesting is Ownable {
             _isRevocable,
             false,
             _allocation,
+            totalVestingAllocation,
             false,
             0,
             _IcoType,
@@ -214,16 +219,20 @@ contract Vesting is Ownable {
             vestingSchedule.releasedPeriod -
             vestingSchedule.numberOfCliff;
 
-        if (!vestingSchedule.tgeVested) {
-            releasableAmount += ((vestingSchedule.unlockRate *
-                vestingSchedule.allocation) / 100);
-            vestingSchedule.tgeVested = true;
-        }
-        if (vestedMonthNumber > 0) {
-            vestingSchedule.releasedPeriod += vestedMonthNumber;
-            releasableAmount += ((vestingSchedule.allocation /
+        if(vestedMonthNumber >= 0) {
+            if(!vestingSchedule.tgeVested) {
+                releasableAmount += ((vestingSchedule.unlockRate *
+                vestingSchedule.cliffAndVestingAllocation) / 100);
+                vestingSchedule.tgeVested = true;
+                //vestedMonthNumber -= vestingSchedule.numberOfCliff;
+            }
+            if(vestedMonthNumber != 0) {
+                vestingSchedule.releasedPeriod += vestedMonthNumber;
+                releasableAmount += ((vestingSchedule.vestingAllocation /
                 vestingSchedule.numberOfVesting) * vestedMonthNumber);
+            }
         }
+
         return releasableAmount;
     }
 
@@ -236,7 +245,7 @@ contract Vesting is Ownable {
         VestingScheduleStruct memory vestingSchedule,
         uint256 currentTime
     ) internal pure returns (uint256) {
-        return (currentTime - vestingSchedule.initializationTime) / 30 seconds;
+        return (currentTime - vestingSchedule.initializationTime) / (1000 * 60 * 60 * 24) / 30;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -251,7 +260,7 @@ contract Vesting is Ownable {
         view
         returns (uint256)
     {
-        return vestingSchedules[_beneficiary][_icoType].allocation;
+        return vestingSchedules[_beneficiary][_icoType].cliffAndVestingAllocation;
     }
 
     /**
@@ -259,12 +268,45 @@ contract Vesting is Ownable {
      * @param _beneficiary Beneficiary vesting schedule struct.
      * @param _icoType Beneficiary vesting schedule struct.
      */
-    function getScheduleInvestedUsdt(address _beneficiary, uint256 _icoType)
+    function getReleasableUsdtAmount(address _beneficiary, uint256 _icoType)
         external
         view
         returns (uint256)
     {
-        return vestingSchedules[_beneficiary][_icoType].investedUSDT;
+        VestingScheduleStruct memory vestingSchedule = vestingSchedules[
+            _beneficiary
+        ][_icoType];
+        uint256 currentTime = block.timestamp;
+        uint256 releasableUsdtAmount = 0;
+        uint256 vestedMonthNumber = _getElapsedMonth(
+            vestingSchedule,
+            currentTime
+        ) -
+            vestingSchedule.releasedPeriod -
+            vestingSchedule.numberOfCliff;
+
+        if(vestedMonthNumber >= 0) {
+            if(!vestingSchedule.tgeVested) {
+                uint256 releasableAmount = 0;
+                releasableAmount = ((vestingSchedule.unlockRate * 
+                vestingSchedule.cliffAndVestingAllocation) / 100);
+
+                releasableUsdtAmount +=  ((releasableAmount * vestingSchedule.investedUSDT) / vestingSchedule.cliffAndVestingAllocation);
+                vestingSchedule.tgeVested = true;
+                //vestedMonthNumber -= vestingSchedule.numberOfCliff;
+            }
+            if(vestedMonthNumber != 0) {
+                vestingSchedule.releasedPeriod += vestedMonthNumber;
+                uint256 releasableAmount = 0;
+                releasableAmount = ((vestingSchedule.vestingAllocation /
+                    vestingSchedule.numberOfVesting) * vestedMonthNumber);
+
+                releasableUsdtAmount +=  ((releasableAmount * vestingSchedule.investedUSDT) / vestingSchedule.vestingAllocation);
+                vestingSchedule.releasedPeriod += vestedMonthNumber;
+            }
+        }
+
+        return releasableUsdtAmount;
     }
 
     /**
