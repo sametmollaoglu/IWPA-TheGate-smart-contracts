@@ -84,14 +84,15 @@ contract Vesting is Ownable {
         uint256 _allocation,
         uint256 _IcoType,
         uint256 _investedUsdt
-    ) external {
+    ) internal {
         require(
             vestingSchedules[_beneficiary][_IcoType].beneficiaryAddress ==
                 address(0x0),
             "ERROR (createVestingSchedule): Schedule already exist."
         );
         require(
-            totalAllocation + _allocation <= token.balanceOf(address(this)),
+            //totalAllocation + _allocation <= token.balanceOf(address(this)),
+            totalAllocation + _allocation <= token.balanceOf(msg.sender),
             "ERROR at createVestingSchedule: Cannot create vesting schedule because not sufficient tokens"
         );
         require(
@@ -128,6 +129,7 @@ contract Vesting is Ownable {
         );
 
         totalAllocation += _allocation;
+        
         emit VestingScheduleAdded(
             _beneficiary,
             _numberOfCliffMonths,
@@ -136,7 +138,11 @@ contract Vesting is Ownable {
             _isRevocable,
             _allocation,
             _IcoType
-        );
+        ); 
+    }
+
+    function getBeneficiaryVesting(address beneficiary, uint icoType) public view returns (VestingScheduleStruct memory) {
+        return vestingSchedules[beneficiary][icoType];
     }
 
     /**
@@ -269,7 +275,7 @@ contract Vesting is Ownable {
      * @param _icoType Beneficiary vesting schedule struct.
      */
     function getReleasableUsdtAmount(address _beneficiary, uint256 _icoType)
-        external
+        public
         view
         returns (uint256)
     {
