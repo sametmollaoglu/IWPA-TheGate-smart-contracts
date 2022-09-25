@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contract/Vesting.sol";
+import "contracts/Vesting.sol";
 
 //seed sale flag => 0
 //private sale flag => 1
@@ -359,6 +359,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint unlockDateTimestamp;
         uint tokenAmount;
         uint usdtAmount;
+        uint vestingRate;
     }
 
     function getVestingList(uint icoType) public view returns(VestingScheduleData[] memory) {
@@ -368,20 +369,31 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         VestingScheduleData[] memory scheduleArr = new VestingScheduleData[](size);
         VestingScheduleStruct memory vesting = getBeneficiaryVesting(msg.sender, icoType);
 
-         scheduleArr.push(
-            VestingScheduleData({
-                ICOrate: _usdtRate,
-                ICOsupply: _supply,
-                ICOusdtRaised: 0,
-                ICOtokenAllocated: 0,
-                ICOtokenSold: 0,
-                ICOstate: IcoState.nonActive,
-                ICOnumberOfCliff: _cliffMonths,
-                ICOnumberOfVesting: _vestingMonths,
-                ICOunlockRate: _unlockRate
-            })
-        );
+        uint cliffTokenAllocation = ((vesting.cliffAndVestingAllocation * (10**18)) * vesting.unlockRate ) / 100; //wei
+        uint cliffUsdtAllocation = (cliffTokenAllocation * vesting.investedUSDT) / (vesting.cliffAndVestingAllocation * (10**18)); //wei
+        uint cliffUnlockDateTimestamp = vesting.initializationTime + (vesting.numberOfCliff * 30 days);
+         scheduleArr[0] = VestingScheduleData({
+                id: 0,
+                unlockDateTimestamp: cliffUnlockDateTimestamp,
+                tokenAmount: cliffTokenAllocation,
+                usdtAmount: cliffUsdtAllocation,
+                vestingRate: vesting.unlockRate
+            });
 
+        uint vestingRateAfterCliff = (100 - vesting.unlockRate) / vesting.numberOfVesting;
+        uint usdtAmountAfterCliff = ((vesting.vestingAllocation * (10**18) ) * vesting.investedUSDT) / vesting.numberOfVesting; //wei
+        uint tokenAmountAfterCliff = (vesting.vestingAllocation * (10**18) ) / vesting.numberOfVesting; //wei
+
+        for(uint i = 0; i < vesting.numberOfVesting; ++i) {
+            cliffUnlockDateTimestamp += 30 days;
+            scheduleArr[i + 1] = VestingScheduleData({
+                id: i + 1,
+                unlockDateTimestamp: cliffUnlockDateTimestamp,
+                tokenAmount: tokenAmountAfterCliff,
+                usdtAmount: usdtAmountAfterCliff,
+                vestingRate: vestingRateAfterCliff
+            });
+        }
         return scheduleArr;
     }
 }

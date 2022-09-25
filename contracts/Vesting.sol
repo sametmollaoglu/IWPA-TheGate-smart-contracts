@@ -92,7 +92,7 @@ contract Vesting is Ownable {
         );
         require(
             //totalAllocation + _allocation <= token.balanceOf(address(this)),
-            totalAllocation + _allocation <= token.balanceOf(msg.sender),
+            totalAllocation + _allocation <= token.balanceOf(msg.sender), //todo owner adresi olması gerekmez mi ? Token contractı deploy eden adrssin balaceına bakılması lazım.
             "ERROR at createVestingSchedule: Cannot create vesting schedule because not sufficient tokens"
         );
         require(
