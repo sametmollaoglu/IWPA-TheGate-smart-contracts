@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contracts/Vesting.sol";
+import "contract/Vesting.sol";
 
 //seed sale flag => 0
 //private sale flag => 1
@@ -133,14 +133,14 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      * @dev Client function. Buyer can buy tokens and became participant of own vesting schedule.
      * @param _icoType To specify type of the ICO sale.
      */
-    function buyTokens(uint256 _icoType)
+    function buyTokens(uint256 _icoType, uint256 usdtAmount)
         public
-        payable
+        //payable
         nonReentrant
         isIcoActive(_icoType)
     {
         address beneficiary = msg.sender;
-        uint256 usdtAmount = msg.value;
+        //uint256 usdtAmount = msg.value;
         if (onlyWhitelist[_icoType]) {
             require(
                 whitelist[beneficiary][_icoType],
@@ -370,7 +370,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         VestingScheduleStruct memory vesting = getBeneficiaryVesting(msg.sender, icoType);
 
         uint cliffTokenAllocation = ((vesting.cliffAndVestingAllocation * (10**18)) * vesting.unlockRate ) / 100; //wei
-        uint cliffUsdtAllocation = (cliffTokenAllocation * vesting.investedUSDT) / (vesting.cliffAndVestingAllocation * (10**18)); //wei
+        //uint cliffUsdtAllocation = (cliffTokenAllocation * vesting.investedUSDT) / (vesting.cliffAndVestingAllocation * (10**18)); //wei
+        uint cliffUsdtAllocation = cliffTokenAllocation * (data.ICOrate / (10**18)); //wei
         uint cliffUnlockDateTimestamp = vesting.initializationTime + (vesting.numberOfCliff * 30 days);
          scheduleArr[0] = VestingScheduleData({
                 id: 0,
@@ -381,8 +382,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             });
 
         uint vestingRateAfterCliff = (100 - vesting.unlockRate) / vesting.numberOfVesting;
-        uint usdtAmountAfterCliff = ((vesting.vestingAllocation * (10**18) ) * vesting.investedUSDT) / vesting.numberOfVesting; //wei
-        uint tokenAmountAfterCliff = (vesting.vestingAllocation * (10**18) ) / vesting.numberOfVesting; //wei
+        uint usdtAmountAfterCliff = (data.ICOusdtRaised - cliffUsdtAllocation) / data.ICOnumberOfVesting; //wei
+        uint tokenAmountAfterCliff = ((data.ICOtokenAllocated * (10**18)) - cliffTokenAllocation) / data.ICOnumberOfVesting; //wei
+        //uint usdtAmountAfterCliff = ((vesting.vestingAllocation * (10**18) ) * vesting.investedUSDT) / vesting.numberOfVesting; //wei
+        //uint tokenAmountAfterCliff = (vesting.vestingAllocation * (10**18) ) / vesting.numberOfVesting; //wei
 
         for(uint i = 0; i < vesting.numberOfVesting; ++i) {
             cliffUnlockDateTimestamp += 30 days;
