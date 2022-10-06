@@ -83,7 +83,8 @@ contract Vesting is Ownable {
         bool _isRevocable,
         uint256 _allocation,
         uint256 _IcoType,
-        uint256 _investedUsdt
+        uint256 _investedUsdt,
+        uint256 _icoStartDate
     ) internal {
         require(
             vestingSchedules[_beneficiary][_IcoType].beneficiaryAddress ==
@@ -113,7 +114,7 @@ contract Vesting is Ownable {
 
         vestingSchedules[_beneficiary][_IcoType] = VestingScheduleStruct(
             _beneficiary,
-            block.timestamp,
+            _icoStartDate,
             _numberOfCliffMonths,
             _numberOfVestingMonths,
             _unlockRate,
@@ -313,6 +314,10 @@ contract Vesting is Ownable {
         }
 
         return releasableUsdtAmount;
+    }
+
+    function updateVestingStartDate(uint256 startDate, uint256 _icoType, address beneficiary) external onlyOwner() {
+        vestingSchedules[beneficiary][_icoType].initializationTime = startDate;
     }
 
     /**

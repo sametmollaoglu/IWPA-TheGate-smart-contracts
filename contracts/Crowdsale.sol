@@ -16,20 +16,23 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     // Address where funds are collected as USDT
     address payable public usdtWallet;
 
-    ICOdata[] public ICOdatas;
+    ICOdata[] private ICOdatas;
 
-    mapping(address => mapping(uint256 => bool)) whitelist;
-    bool[2] onlyWhitelist;
+    mapping(uint256 => mapping(address => bool)) private whitelist;
+    mapping(address => mapping(uint256 => bool)) private isIcoMember;
+    mapping(uint256 => address[]) private icoMembers; 
 
     IERC20 public usdt = IERC20(0xbA6879d0Df4b09fC678Ca065c00dd345AdF0365e); //test tether
-
+    IERC20 public tenet;
     //State of ICO sales
     enum IcoState {
         active,
+        onlyWhitelist,
         nonActive
     }
 
     struct ICOdata {
+        string ICOname;
         // How many token units a buyer gets per USDT
         uint256 ICOrate;
         //Supply of the ICO
@@ -48,14 +51,24 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint256 ICOnumberOfVesting;
         //Unlock rate of the ICO sale
         uint256 ICOunlockRate;
+        
+        uint256 ICOstartDate;
     }
 
     //Checks whether the specific ICO sale is active or not
-    modifier isIcoActive(uint256 _icoType) {
+    modifier isIcoAvailable(uint256 _icoType) {
         require(
-            ICOdatas[_icoType].ICOstate == IcoState.active,
-            "ICO should be active."
+            ICOdatas[_icoType].ICOstartDate != 0,
+            "ico does not exist !"
         );
+        require(
+            ICOdatas[_icoType].ICOstate != IcoState.nonActive,
+            "ICO is not active."
+        );
+        if(ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist) {
+            require(whitelist[_icoType][msg.sender],
+            "Member not in whitelist");
+        }
         _;
     }
 
@@ -79,8 +92,6 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         token = IERC20(_token);
         usdtWallet = _usdtWallet;
 
-        onlyWhitelist[0] = true;
-        onlyWhitelist[1] = true;
     }
 
     /*
@@ -91,11 +102,13 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      * @param _unlockRate Unlock rate of the seed sale.
     */
     function createICO (
+        string memory _name,
         uint256 _rate,
         uint256 _supply,
         uint256 _cliffMonths,
         uint256 _vestingMonths,
-        uint8 _unlockRate
+        uint8 _unlockRate,
+        uint256 _startDate
     ) external onlyOwner {
          require(
             _rate > 0,
@@ -106,16 +119,14 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             "ERROR at Crowdsale constructor: Supply for seed sale should be bigger than zero."
         );
         require(
-            _rate > 0,
-            "ERROR at Crowdsale constructor: Rate for private sale should be bigger than zero."
+            _startDate >= block.timestamp,
+            "Start date must be greater than now"
         );
-        require(
-            _supply > 0,
-            "ERROR at Crowdsale constructor: Supply for private sale should be bigger than zero."
-        );
+
         uint _usdtRate = _rate * 10**18;
         ICOdatas.push(
             ICOdata({
+                ICOname: _name,
                 ICOrate: _usdtRate,
                 ICOsupply: _supply,
                 ICOusdtRaised: 0,
@@ -124,7 +135,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
                 ICOstate: IcoState.nonActive,
                 ICOnumberOfCliff: _cliffMonths,
                 ICOnumberOfVesting: _vestingMonths,
-                ICOunlockRate: _unlockRate
+                ICOunlockRate: _unlockRate,
+                ICOstartDate:_startDate
             })
         );
     }
@@ -137,40 +149,46 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         public
         //payable
         nonReentrant
-        isIcoActive(_icoType)
+        isIcoAvailable(_icoType)
     {
+        ICOdata memory ico = ICOdatas[_icoType];
+    
         address beneficiary = msg.sender;
-        //uint256 usdtAmount = msg.value;
-        if (onlyWhitelist[_icoType]) {
-            require(
-                whitelist[beneficiary][_icoType],
-                "You need to be whitelisted to attend to this sale."
-            );
-        }
+        require(
+            ico.ICOstartDate >= block.timestamp,
+            "ICO date expired"
+        );
 
         uint256 tokenAmount = _getTokenAmount(
             usdtAmount,
-            ICOdatas[_icoType].ICOrate
+            ico.ICOrate
         );
 
         _preValidatePurchase(beneficiary, tokenAmount, _icoType);
         createVestingSchedule(
             beneficiary,
-            ICOdatas[_icoType].ICOnumberOfCliff,
-            ICOdatas[_icoType].ICOnumberOfVesting,
-            ICOdatas[_icoType].ICOunlockRate,
+            ico.ICOnumberOfCliff,
+            ico.ICOnumberOfVesting,
+            ico.ICOunlockRate,
             true,
             tokenAmount,
             _icoType,
-            usdtAmount
+            usdtAmount,
+            ico.ICOstartDate
         );
         _updatePurchasingState(usdtAmount, tokenAmount, _icoType);
         _forwardFunds(usdtAmount);
+        if(isIcoMember[beneficiary][_icoType] == false) {
+            isIcoMember[beneficiary][_icoType] = true;
+            icoMembers[_icoType].push(beneficiary);
+        }
+        
         /* eth gelirse contractta parası kalıyor ve teth olarak da ayrıca transfer ediliyor
         uint balance = address(this).balance;
         (beneficiary.call{value: balance}("")
         */
     } 
+
     /**
      * @dev Client function. Buyer can claim vested tokens according to own vesting schedule.
      * @param _icoType To specify type of the ICO sale.
@@ -178,7 +196,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     function claimAsToken(uint256 _icoType)
         public
         nonReentrant
-        isIcoActive(_icoType)
+        isIcoAvailable(_icoType)
     {
         address beneficiary = msg.sender;
         ICOdatas[_icoType].ICOtokenSold += getReleasableAmount(
@@ -195,7 +213,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     function claimAsUsdt(uint256 _icoType)
         public
         nonReentrant
-        isIcoActive(_icoType)
+        isIcoAvailable(_icoType)
     {
         address beneficiary = msg.sender;
         uint releasableUsdtAmount = getReleasableUsdtAmount(
@@ -298,10 +316,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      * @dev Change ICO state, can start or end ICO sale.
      * @param _icoType ICO type value to specify sale.
      */
-    function changeIcoState(uint256 _icoType) external onlyOwner {
-        ICOdatas[_icoType].ICOstate == IcoState.active
-            ? ICOdatas[_icoType].ICOstate = IcoState.nonActive
-            : ICOdatas[_icoType].ICOstate = IcoState.active;
+    function changeIcoState(uint256 _icoType, IcoState icoState) external onlyOwner {
+        ICOdatas[_icoType].ICOstate = icoState;
     }
 
     /**
@@ -313,16 +329,18 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         external
         onlyOwner
     {
-        whitelist[_beneficiary][_icoType] = true;
+        whitelist[_icoType][_beneficiary] = true;
     }
 
-    /**
-     * @notice Owner can change specific ICO sale whitelist condition.
-     * @param _icoType ICO type value to specify sale.
-     */
-    function changeWhitelistCondition(uint256 _icoType) external onlyOwner {
-        onlyWhitelist[_icoType] = !onlyWhitelist[_icoType];
+    function getICOMembers(uint256 _icoType)
+        external
+        view
+        onlyOwner
+        returns(address[] memory)
+    {
+        return icoMembers[_icoType];
     }
+
 
     /**
      * @dev Owner function. Change usdt wallet address.
@@ -398,5 +416,13 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             });
         }
         return scheduleArr;
+    }
+
+    function getICODatas() external  view onlyOwner returns(ICOdata[] memory){
+        return ICOdatas;
+    }
+
+    function setTenetContract(address tenetAddress) external onlyOwner() {
+        tenet = IERC20(tenetAddress); 
     }
 }
