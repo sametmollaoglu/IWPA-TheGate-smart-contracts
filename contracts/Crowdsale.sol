@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contract/Vesting.sol";
+import "contracts/Vesting.sol";
 
 //seed sale flag => 0
 //private sale flag => 1
@@ -18,9 +18,11 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
 
     ICOdata[] private ICOdatas;
 
+    uint256 private totalAllocation;
+
     mapping(uint256 => mapping(address => bool)) private whitelist;
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
-    mapping(uint256 => address[]) private icoMembers; 
+    mapping(uint256 => address[]) private icoMembers;
 
     IERC20 public usdt = IERC20(0xbA6879d0Df4b09fC678Ca065c00dd345AdF0365e); //test tether
     IERC20 public tenet;
@@ -51,23 +53,18 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint256 ICOnumberOfVesting;
         //Unlock rate of the ICO sale
         uint256 ICOunlockRate;
-        
         uint256 ICOstartDate;
     }
 
     //Checks whether the specific ICO sale is active or not
     modifier isIcoAvailable(uint256 _icoType) {
-        require(
-            ICOdatas[_icoType].ICOstartDate != 0,
-            "ico does not exist !"
-        );
+        require(ICOdatas[_icoType].ICOstartDate != 0, "ico does not exist !");
         require(
             ICOdatas[_icoType].ICOstate != IcoState.nonActive,
             "ICO is not active."
         );
-        if(ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist) {
-            require(whitelist[_icoType][msg.sender],
-            "Member not in whitelist");
+        if (ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist) {
+            require(whitelist[_icoType][msg.sender], "Member not in whitelist");
         }
         _;
     }
@@ -76,10 +73,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      * @param _token Address of the token being sold (token contract).
      * @param _usdtWallet Address where collected funds will be forwarded to.
      */
-    constructor(
-        address _token,
-        address payable _usdtWallet
-    ) Vesting(_token) {
+    constructor(address _token, address payable _usdtWallet) Vesting(_token) {
         require(
             address(_token) != address(0),
             "ERROR at Crowdsale constructor: Token contract shouldn't be zero address."
@@ -88,20 +82,20 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             _usdtWallet != address(0),
             "ERROR at Crowdsale constructor: USDT wallet shouldn't be zero address."
         );
-       
+
         token = IERC20(_token);
         usdtWallet = _usdtWallet;
-
+        totalAllocation = 0;
     }
 
     /*
-    * @param _rate How many token units a buyer gets per USDT at seed sale.
+     * @param _rate How many token units a buyer gets per USDT at seed sale.
      * @param _supply Number of token will be in seed sale.
      * @param _cliffMonths Number of cliff months of seed sale.
      * @param _vestingMonths Number of vesting months of seed sale.
      * @param _unlockRate Unlock rate of the seed sale.
-    */
-    function createICO (
+     */
+    function createICO(
         string memory _name,
         uint256 _rate,
         uint256 _supply,
@@ -110,7 +104,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint8 _unlockRate,
         uint256 _startDate
     ) external onlyOwner {
-         require(
+        require(
             _rate > 0,
             "ERROR at Crowdsale constructor: Rate for seed sale should be bigger than zero."
         );
@@ -122,6 +116,11 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             _startDate >= block.timestamp,
             "Start date must be greater than now"
         );
+        require(
+            totalAllocation + _supply <= token.balanceOf(msg.sender),
+            "ERROR at createICO: Cannot create sale round because not sufficient tokens."
+        );
+        totalAllocation += _supply;
 
         uint _usdtRate = _rate * 10**18;
         ICOdatas.push(
@@ -136,7 +135,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
                 ICOnumberOfCliff: _cliffMonths,
                 ICOnumberOfVesting: _vestingMonths,
                 ICOunlockRate: _unlockRate,
-                ICOstartDate:_startDate
+                ICOstartDate: _startDate
             })
         );
     }
@@ -152,17 +151,11 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         isIcoAvailable(_icoType)
     {
         ICOdata memory ico = ICOdatas[_icoType];
-    
-        address beneficiary = msg.sender;
-        require(
-            ico.ICOstartDate >= block.timestamp,
-            "ICO date expired"
-        );
 
-        uint256 tokenAmount = _getTokenAmount(
-            usdtAmount,
-            ico.ICOrate
-        );
+        address beneficiary = msg.sender;
+        require(ico.ICOstartDate >= block.timestamp, "ICO date expired");
+
+        uint256 tokenAmount = _getTokenAmount(usdtAmount, ico.ICOrate);
 
         _preValidatePurchase(beneficiary, tokenAmount, _icoType);
         createVestingSchedule(
@@ -178,16 +171,16 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         );
         _updatePurchasingState(usdtAmount, tokenAmount, _icoType);
         _forwardFunds(usdtAmount);
-        if(isIcoMember[beneficiary][_icoType] == false) {
+        if (isIcoMember[beneficiary][_icoType] == false) {
             isIcoMember[beneficiary][_icoType] = true;
             icoMembers[_icoType].push(beneficiary);
         }
-        
+
         /* eth gelirse contractta parası kalıyor ve teth olarak da ayrıca transfer ediliyor
         uint balance = address(this).balance;
         (beneficiary.call{value: balance}("")
         */
-    } 
+    }
 
     /**
      * @dev Client function. Buyer can claim vested tokens according to own vesting schedule.
@@ -224,7 +217,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         ICOdatas[_icoType].ICOusdtRaised -= releasableUsdtAmount;
 
         //tether alıyor token sayımızı arttırıyor çünkü geri veriyor
-        ICOdatas[_icoType].ICOtokenAllocated -= getReleasableAmount(beneficiary, _icoType);
+        ICOdatas[_icoType].ICOtokenAllocated -= getReleasableAmount(
+            beneficiary,
+            _icoType
+        );
     }
 
     /**
@@ -264,7 +260,9 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     /**
      * @dev Beneficiary can withdraw exactly amount of deposited USDT investing.
      */
-    function _processPurchaseUSDT(uint releasedUsdt, address beneficiary) internal {
+    function _processPurchaseUSDT(uint releasedUsdt, address beneficiary)
+        internal
+    {
         usdt.approve(beneficiary, releasedUsdt);
     }
 
@@ -279,7 +277,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint256 _tokenAmount,
         uint256 _icoType
     ) internal {
-        ICOdata storage ico =  ICOdatas[_icoType];
+        ICOdata storage ico = ICOdatas[_icoType];
         ico.ICOtokenAllocated += _tokenAmount;
         ico.ICOusdtRaised += _usdtAmount;
     }
@@ -302,6 +300,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      * @dev Determines how USDT is stored/forwarded on purchases.
      */
     function _forwardFunds(uint usdtAmount) internal {
+        //usdt number of decimal is 6
         usdt.transferFrom(msg.sender, usdtWallet, usdtAmount);
     }
 
@@ -316,7 +315,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      * @dev Change ICO state, can start or end ICO sale.
      * @param _icoType ICO type value to specify sale.
      */
-    function changeIcoState(uint256 _icoType, IcoState icoState) external onlyOwner {
+    function changeIcoState(uint256 _icoType, IcoState icoState)
+        external
+        onlyOwner
+    {
         ICOdatas[_icoType].ICOstate = icoState;
     }
 
@@ -336,11 +338,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         external
         view
         onlyOwner
-        returns(address[] memory)
+        returns (address[] memory)
     {
         return icoMembers[_icoType];
     }
-
 
     /**
      * @dev Owner function. Change usdt wallet address.
@@ -380,32 +381,48 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint vestingRate;
     }
 
-    function getVestingList(uint icoType) public view returns(VestingScheduleData[] memory) {
+    function getVestingList(uint icoType)
+        public
+        view
+        onlyOwner
+        returns (VestingScheduleData[] memory)
+    {
         ICOdata memory data = ICOdatas[icoType];
         require(data.ICOrate != 0, "ICO doesn not exist");
         uint size = data.ICOnumberOfVesting + 1;
-        VestingScheduleData[] memory scheduleArr = new VestingScheduleData[](size);
-        VestingScheduleStruct memory vesting = getBeneficiaryVesting(msg.sender, icoType);
+        VestingScheduleData[] memory scheduleArr = new VestingScheduleData[](
+            size
+        );
+        VestingScheduleStruct memory vesting = getBeneficiaryVesting(
+            msg.sender,
+            icoType
+        );
 
-        uint cliffTokenAllocation = ((vesting.cliffAndVestingAllocation * (10**18)) * vesting.unlockRate ) / 100; //wei
+        uint cliffTokenAllocation = ((vesting.cliffAndVestingAllocation *
+            (10**18)) * vesting.unlockRate) / 100; //wei
         //uint cliffUsdtAllocation = (cliffTokenAllocation * vesting.investedUSDT) / (vesting.cliffAndVestingAllocation * (10**18)); //wei
-        uint cliffUsdtAllocation = cliffTokenAllocation * (data.ICOrate / (10**18)); //wei
-        uint cliffUnlockDateTimestamp = vesting.initializationTime + (vesting.numberOfCliff * 30 days);
-         scheduleArr[0] = VestingScheduleData({
-                id: 0,
-                unlockDateTimestamp: cliffUnlockDateTimestamp,
-                tokenAmount: cliffTokenAllocation,
-                usdtAmount: cliffUsdtAllocation,
-                vestingRate: vesting.unlockRate
-            });
+        uint cliffUsdtAllocation = cliffTokenAllocation *
+            (data.ICOrate / (10**18)); //wei
+        uint cliffUnlockDateTimestamp = vesting.initializationTime +
+            (vesting.numberOfCliff * 30 days);
+        scheduleArr[0] = VestingScheduleData({
+            id: 0,
+            unlockDateTimestamp: cliffUnlockDateTimestamp,
+            tokenAmount: cliffTokenAllocation,
+            usdtAmount: cliffUsdtAllocation,
+            vestingRate: vesting.unlockRate
+        });
 
-        uint vestingRateAfterCliff = (100 - vesting.unlockRate) / vesting.numberOfVesting;
-        uint usdtAmountAfterCliff = (data.ICOusdtRaised - cliffUsdtAllocation) / data.ICOnumberOfVesting; //wei
-        uint tokenAmountAfterCliff = ((data.ICOtokenAllocated * (10**18)) - cliffTokenAllocation) / data.ICOnumberOfVesting; //wei
+        uint vestingRateAfterCliff = (100 - vesting.unlockRate) /
+            vesting.numberOfVesting;
+        uint usdtAmountAfterCliff = (data.ICOusdtRaised - cliffUsdtAllocation) /
+            data.ICOnumberOfVesting; //wei
+        uint tokenAmountAfterCliff = ((data.ICOtokenAllocated * (10**18)) -
+            cliffTokenAllocation) / data.ICOnumberOfVesting; //wei
         //uint usdtAmountAfterCliff = ((vesting.vestingAllocation * (10**18) ) * vesting.investedUSDT) / vesting.numberOfVesting; //wei
         //uint tokenAmountAfterCliff = (vesting.vestingAllocation * (10**18) ) / vesting.numberOfVesting; //wei
 
-        for(uint i = 0; i < vesting.numberOfVesting; ++i) {
+        for (uint i = 0; i < vesting.numberOfVesting; ++i) {
             cliffUnlockDateTimestamp += 30 days;
             scheduleArr[i + 1] = VestingScheduleData({
                 id: i + 1,
@@ -418,11 +435,11 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         return scheduleArr;
     }
 
-    function getICODatas() external  view onlyOwner returns(ICOdata[] memory){
+    function getICODatas() external view onlyOwner returns (ICOdata[] memory) {
         return ICOdatas;
     }
 
-    function setTenetContract(address tenetAddress) external onlyOwner() {
-        tenet = IERC20(tenetAddress); 
+    function setTenetContract(address tenetAddress) external onlyOwner {
+        tenet = IERC20(tenetAddress);
     }
 }

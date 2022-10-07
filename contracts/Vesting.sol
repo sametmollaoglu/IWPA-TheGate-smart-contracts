@@ -11,7 +11,6 @@ contract Vesting is Ownable {
 
     //Address of the ERC20 token
     IERC20 public token;
-    uint256 private totalAllocation;
     uint256 private totalReleasedAllocation;
 
     mapping(address => mapping(uint256 => VestingScheduleStruct))
@@ -24,7 +23,6 @@ contract Vesting is Ownable {
     constructor(address tokenAddress) {
         require(tokenAddress != address(0x0));
         token = IERC20(tokenAddress);
-        totalAllocation = 0;
         totalReleasedAllocation = 0;
     }
 
@@ -92,11 +90,6 @@ contract Vesting is Ownable {
             "ERROR (createVestingSchedule): Schedule already exist."
         );
         require(
-            //totalAllocation + _allocation <= token.balanceOf(address(this)),
-            totalAllocation + _allocation <= token.balanceOf(msg.sender), //todo owner adresi olması gerekmez mi ? Token contractı deploy eden adrssin balaceına bakılması lazım.
-            "ERROR at createVestingSchedule: Cannot create vesting schedule because not sufficient tokens"
-        );
-        require(
             _numberOfCliffMonths > 0,
             "ERROR at createVestingSchedule: Cliff cannot be 0 month"
         );
@@ -104,13 +97,10 @@ contract Vesting is Ownable {
             _numberOfVestingMonths > 0,
             "ERROR at createVestingSchedule: Vesting cannot be 0 month"
         );
-        require(
-            _allocation > 0,
-            "ERROR at createVestingSchedule: Allocation must be > 0"
-        );
 
-        uint totalVestingAllocation = (_allocation - (_unlockRate *
-                _allocation) / 100);
+        uint totalVestingAllocation = (_allocation -
+            (_unlockRate * _allocation) /
+            100);
 
         vestingSchedules[_beneficiary][_IcoType] = VestingScheduleStruct(
             _beneficiary,
@@ -129,8 +119,6 @@ contract Vesting is Ownable {
             false
         );
 
-        totalAllocation += _allocation;
-        
         emit VestingScheduleAdded(
             _beneficiary,
             _numberOfCliffMonths,
@@ -139,10 +127,14 @@ contract Vesting is Ownable {
             _isRevocable,
             _allocation,
             _IcoType
-        ); 
+        );
     }
 
-    function getBeneficiaryVesting(address beneficiary, uint icoType) public view returns (VestingScheduleStruct memory) {
+    function getBeneficiaryVesting(address beneficiary, uint icoType)
+        public
+        view
+        returns (VestingScheduleStruct memory)
+    {
         return vestingSchedules[beneficiary][icoType];
     }
 
@@ -226,17 +218,17 @@ contract Vesting is Ownable {
             vestingSchedule.releasedPeriod -
             vestingSchedule.numberOfCliff;
 
-        if(vestedMonthNumber >= 0) {
-            if(!vestingSchedule.tgeVested) {
+        if (vestedMonthNumber >= 0) {
+            if (!vestingSchedule.tgeVested) {
                 releasableAmount += ((vestingSchedule.unlockRate *
-                vestingSchedule.cliffAndVestingAllocation) / 100);
+                    vestingSchedule.cliffAndVestingAllocation) / 100);
                 vestingSchedule.tgeVested = true;
                 //vestedMonthNumber -= vestingSchedule.numberOfCliff;
             }
-            if(vestedMonthNumber != 0) {
+            if (vestedMonthNumber != 0) {
                 vestingSchedule.releasedPeriod += vestedMonthNumber;
                 releasableAmount += ((vestingSchedule.vestingAllocation /
-                vestingSchedule.numberOfVesting) * vestedMonthNumber);
+                    vestingSchedule.numberOfVesting) * vestedMonthNumber);
             }
         }
 
@@ -252,10 +244,11 @@ contract Vesting is Ownable {
         VestingScheduleStruct memory vestingSchedule,
         uint256 currentTime
     ) internal pure returns (uint256) {
-        return (currentTime - vestingSchedule.initializationTime) / (1000 * 60 * 60 * 24) / 30;
+        return
+            (currentTime - vestingSchedule.initializationTime) /
+            (1000 * 60 * 60 * 24) /
+            30;
     }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////////
 
     /**
      * @notice Get token allocation of vesting schedule by using beneficiary address and ico type
@@ -267,7 +260,8 @@ contract Vesting is Ownable {
         view
         returns (uint256)
     {
-        return vestingSchedules[_beneficiary][_icoType].cliffAndVestingAllocation;
+        return
+            vestingSchedules[_beneficiary][_icoType].cliffAndVestingAllocation;
     }
 
     /**
@@ -292,23 +286,27 @@ contract Vesting is Ownable {
             vestingSchedule.releasedPeriod -
             vestingSchedule.numberOfCliff;
 
-        if(vestedMonthNumber >= 0) {
-            if(!vestingSchedule.tgeVested) {
+        if (vestedMonthNumber >= 0) {
+            if (!vestingSchedule.tgeVested) {
                 uint256 releasableAmount = 0;
-                releasableAmount = ((vestingSchedule.unlockRate * 
-                vestingSchedule.cliffAndVestingAllocation) / 100);
+                releasableAmount = ((vestingSchedule.unlockRate *
+                    vestingSchedule.cliffAndVestingAllocation) / 100);
 
-                releasableUsdtAmount +=  ((releasableAmount * vestingSchedule.investedUSDT) / vestingSchedule.cliffAndVestingAllocation);
+                releasableUsdtAmount += ((releasableAmount *
+                    vestingSchedule.investedUSDT) /
+                    vestingSchedule.cliffAndVestingAllocation);
                 vestingSchedule.tgeVested = true;
                 //vestedMonthNumber -= vestingSchedule.numberOfCliff;
             }
-            if(vestedMonthNumber != 0) {
+            if (vestedMonthNumber != 0) {
                 vestingSchedule.releasedPeriod += vestedMonthNumber;
                 uint256 releasableAmount = 0;
                 releasableAmount = ((vestingSchedule.vestingAllocation /
                     vestingSchedule.numberOfVesting) * vestedMonthNumber);
 
-                releasableUsdtAmount +=  ((releasableAmount * vestingSchedule.investedUSDT) / vestingSchedule.vestingAllocation);
+                releasableUsdtAmount += ((releasableAmount *
+                    vestingSchedule.investedUSDT) /
+                    vestingSchedule.vestingAllocation);
                 vestingSchedule.releasedPeriod += vestedMonthNumber;
             }
         }
@@ -316,7 +314,11 @@ contract Vesting is Ownable {
         return releasableUsdtAmount;
     }
 
-    function updateVestingStartDate(uint256 startDate, uint256 _icoType, address beneficiary) external onlyOwner() {
+    function updateVestingStartDate(
+        uint256 startDate,
+        uint256 _icoType,
+        address beneficiary
+    ) external onlyOwner {
         vestingSchedules[beneficiary][_icoType].initializationTime = startDate;
     }
 
