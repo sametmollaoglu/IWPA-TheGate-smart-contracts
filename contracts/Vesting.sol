@@ -14,7 +14,7 @@ contract Vesting is Ownable {
     uint256 private totalReleasedAllocation;
 
     mapping(address => mapping(uint256 => VestingScheduleStruct))
-        private vestingSchedules;
+        internal vestingSchedules;
 
     /**
      * @dev Creates a vesting contract.

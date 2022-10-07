@@ -19,6 +19,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     ICOdata[] private ICOdatas;
 
     uint256 private totalAllocation;
+    uint256 private totalLeftover = 0;
 
     mapping(uint256 => mapping(address => bool)) private whitelist;
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
@@ -158,17 +159,32 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint256 tokenAmount = _getTokenAmount(usdtAmount, ico.ICOrate);
 
         _preValidatePurchase(beneficiary, tokenAmount, _icoType);
-        createVestingSchedule(
-            beneficiary,
-            ico.ICOnumberOfCliff,
-            ico.ICOnumberOfVesting,
-            ico.ICOunlockRate,
-            true,
-            tokenAmount,
-            _icoType,
-            usdtAmount,
-            ico.ICOstartDate
-        );
+        if (
+            vestingSchedules[beneficiary][_icoType].beneficiaryAddress ==
+            address(0x0)
+        ) {
+            createVestingSchedule(
+                beneficiary,
+                ico.ICOnumberOfCliff,
+                ico.ICOnumberOfVesting,
+                ico.ICOunlockRate,
+                true,
+                tokenAmount,
+                _icoType,
+                usdtAmount,
+                ico.ICOstartDate
+            );
+        } else {
+            uint256 totalVestingAllocation = (tokenAmount -
+                (ico.ICOunlockRate * tokenAmount) /
+                100);
+            vestingSchedules[beneficiary][_icoType]
+                .cliffAndVestingAllocation += tokenAmount;
+            vestingSchedules[beneficiary][_icoType]
+                .vestingAllocation += totalVestingAllocation;
+            vestingSchedules[beneficiary][_icoType].investedUSDT += usdtAmount;
+        }
+
         _updatePurchasingState(usdtAmount, tokenAmount, _icoType);
         _forwardFunds(usdtAmount);
         if (isIcoMember[beneficiary][_icoType] == false) {
@@ -441,5 +457,20 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
 
     function setTenetContract(address tenetAddress) external onlyOwner {
         tenet = IERC20(tenetAddress);
+    }
+
+    function transferLeftoverAllocation() external onlyOwner {
+        uint256 currentTime = block.timestamp;
+        for (uint i = 0; i < ICOdatas.length; i++) {
+            if (ICOdatas[i].ICOstartDate >= currentTime) {
+                uint256 leftover = ICOdatas[i].ICOsupply -
+                    ICOdatas[i].ICOtokenAllocated;
+                ICOdatas[i].ICOsupply -= leftover;
+                totalLeftover += leftover;
+            } else {
+                ICOdatas[i].ICOsupply += totalLeftover;
+                totalLeftover = 0;
+            }
+        }
     }
 }
