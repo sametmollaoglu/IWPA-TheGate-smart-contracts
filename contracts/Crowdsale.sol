@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contracts/Vesting.sol";
+import "contract/Vesting.sol";
 
 //seed sale flag => 0
 //private sale flag => 1
@@ -19,7 +19,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     ICOdata[] private ICOdatas;
 
     uint256 private totalAllocation;
-    uint256 private totalLeftover = 0;
+    uint256 private totalLeftover;
 
     mapping(uint256 => mapping(address => bool)) private whitelist;
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
@@ -31,7 +31,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     enum IcoState {
         active,
         onlyWhitelist,
-        nonActive
+        nonActive,
+        done
     }
 
     struct ICOdata {
@@ -336,7 +337,31 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         onlyOwner
     {
         ICOdatas[_icoType].ICOstate = icoState;
+        if(icoState == IcoState.done) {
+            totalLeftover += (ICOdatas[_icoType].ICOsupply - ICOdatas[_icoType].ICOtokenAllocated);
+        }
     }
+
+    function increaseIcoSupplyWithLeftover(uint256 _icoType, uint256 amount)
+        external
+        onlyOwner
+    {
+        require(ICOdatas[_icoType].ICOstartDate != 0, "ico does not exist !");
+        require(
+            ICOdatas[_icoType].ICOstate != IcoState.nonActive,
+            "ICO is not active."
+        );
+        require(totalLeftover >= amount, "Not enough leftover");
+        ICOdatas[_icoType].ICOsupply += amount;
+        totalLeftover -= amount;
+    }
+
+    function getLeftover() // totalLeftover can be public maybe
+        external
+        view
+        onlyOwner returns(uint256) {
+            return totalLeftover;
+        }
 
     /**
      * @notice Owner can add an address to whitelist.
@@ -457,20 +482,5 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
 
     function setTenetContract(address tenetAddress) external onlyOwner {
         tenet = IERC20(tenetAddress);
-    }
-
-    function transferLeftoverAllocation() external onlyOwner {
-        uint256 currentTime = block.timestamp;
-        for (uint i = 0; i < ICOdatas.length; i++) {
-            if (ICOdatas[i].ICOstartDate >= currentTime) {
-                uint256 leftover = ICOdatas[i].ICOsupply -
-                    ICOdatas[i].ICOtokenAllocated;
-                ICOdatas[i].ICOsupply -= leftover;
-                totalLeftover += leftover;
-            } else {
-                ICOdatas[i].ICOsupply += totalLeftover;
-                totalLeftover = 0;
-            }
-        }
     }
 }
