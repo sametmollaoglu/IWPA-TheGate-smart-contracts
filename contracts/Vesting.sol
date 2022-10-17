@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract Vesting is Ownable {
     using SafeMath for uint256;
-    using SafeERC20 for IERC20;
+    using SafeERC20 for ERC20;
 
     //Address of the ERC20 token
-    IERC20 public token;
+    ERC20 public token;
     uint256 private totalReleasedAllocation;
 
     mapping(address => mapping(uint256 => VestingScheduleStruct))
@@ -22,7 +22,7 @@ contract Vesting is Ownable {
      */
     constructor(address tokenAddress) {
         require(tokenAddress != address(0x0));
-        token = IERC20(tokenAddress);
+        token = ERC20(tokenAddress);
         totalReleasedAllocation = 0;
     }
 
@@ -135,6 +135,11 @@ contract Vesting is Ownable {
         view
         returns (VestingScheduleStruct memory)
     {
+        require(
+            vestingSchedules[beneficiary][icoType].beneficiaryAddress !=
+                address(0),
+            "ERROR at getBeneficiaryVesting: There is no participating user with this address."
+        );
         return vestingSchedules[beneficiary][icoType];
     }
 
@@ -244,10 +249,7 @@ contract Vesting is Ownable {
         VestingScheduleStruct memory vestingSchedule,
         uint256 currentTime
     ) internal pure returns (uint256) {
-        return
-            (currentTime - vestingSchedule.initializationTime) /
-            (1000 * 60 * 60 * 24) /
-            30;
+        return (currentTime - vestingSchedule.initializationTime) / (60);
     }
 
     /**

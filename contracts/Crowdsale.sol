@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contract/Vesting.sol";
+import "contracts/Vesting.sol";
 
 //seed sale flag => 0
 //private sale flag => 1
@@ -25,8 +25,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
     mapping(uint256 => address[]) private icoMembers;
 
-    IERC20 public usdt = IERC20(0xbA6879d0Df4b09fC678Ca065c00dd345AdF0365e); //test tether
+    //IERC20 public usdt = IERC20(0xbA6879d0Df4b09fC678Ca065c00dd345AdF0365e); //test tether
+    IERC20 public usdt = IERC20(0xd2a5bC10698FD955D1Fe6cb468a17809A08fd005); //test tether
     IERC20 public tenet;
+
     //State of ICO sales
     enum IcoState {
         active,
@@ -56,6 +58,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         //Unlock rate of the ICO sale
         uint256 ICOunlockRate;
         uint256 ICOstartDate;
+        uint256 TokenAbsoluteUsdtPrice;
     }
 
     //Checks whether the specific ICO sale is active or not
@@ -85,7 +88,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             "ERROR at Crowdsale constructor: USDT wallet shouldn't be zero address."
         );
 
-        token = IERC20(_token);
+        token = ERC20(_token);
         usdtWallet = _usdtWallet;
         totalAllocation = 0;
     }
@@ -104,7 +107,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint256 _cliffMonths,
         uint256 _vestingMonths,
         uint8 _unlockRate,
-        uint256 _startDate
+        uint256 _startDate,
+        uint256 _tokenAbsoluteUsdtPrice
     ) external onlyOwner {
         require(
             _rate > 0,
@@ -124,11 +128,12 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         );
         totalAllocation += _supply;
 
-        uint _usdtRate = _rate * 10**18;
+        //uint _usdtRate = _rate * 10**18;
         ICOdatas.push(
             ICOdata({
                 ICOname: _name,
-                ICOrate: _usdtRate,
+                //ICOrate: _usdtRate,
+                ICOrate: _rate,
                 ICOsupply: _supply,
                 ICOusdtRaised: 0,
                 ICOtokenAllocated: 0,
@@ -137,7 +142,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
                 ICOnumberOfCliff: _cliffMonths,
                 ICOnumberOfVesting: _vestingMonths,
                 ICOunlockRate: _unlockRate,
-                ICOstartDate: _startDate
+                ICOstartDate: _startDate,
+                TokenAbsoluteUsdtPrice: _tokenAbsoluteUsdtPrice
             })
         );
     }
@@ -148,7 +154,6 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
      */
     function buyTokens(uint256 _icoType, uint256 usdtAmount)
         public
-        //payable
         nonReentrant
         isIcoAvailable(_icoType)
     {
@@ -157,9 +162,13 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         address beneficiary = msg.sender;
         require(ico.ICOstartDate >= block.timestamp, "ICO date expired");
 
-        uint256 tokenAmount = _getTokenAmount(usdtAmount, ico.ICOrate);
+        uint256 tokenAmount = _getTokenAmount(
+            usdtAmount,
+            ico.TokenAbsoluteUsdtPrice
+        );
 
         _preValidatePurchase(beneficiary, tokenAmount, _icoType);
+
         if (
             vestingSchedules[beneficiary][_icoType].beneficiaryAddress ==
             address(0x0)
@@ -192,11 +201,6 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             isIcoMember[beneficiary][_icoType] = true;
             icoMembers[_icoType].push(beneficiary);
         }
-
-        /* eth gelirse contractta parası kalıyor ve teth olarak da ayrıca transfer ediliyor
-        uint balance = address(this).balance;
-        (beneficiary.call{value: balance}("")
-        */
     }
 
     /**
@@ -261,6 +265,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
                 ICOdatas[_icoType].ICOsupply,
             "Not enough token in the ICO supply"
         );
+        //require(usdt.balanceOf(_beneficiary)>=_usdtAmount,"Not enough USDT");
     }
 
     /**
@@ -277,10 +282,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     /**
      * @dev Beneficiary can withdraw exactly amount of deposited USDT investing.
      */
-    function _processPurchaseUSDT(uint releasedUsdt, address beneficiary)
+    function _processPurchaseUSDT(uint releasableUsdt, address beneficiary)
         internal
     {
-        usdt.approve(beneficiary, releasedUsdt);
+        usdt.approve(beneficiary, releasableUsdt);
     }
 
     /**
@@ -302,15 +307,17 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     /**
      * @dev Returns token amount of the USDT investing.
      * @param _usdtAmount Value in USDT to be converted into tokens.
-     * @param _ICOrate Seed or private ICO rate.
+     * @param _absoluteUsdtPrice Absolute usdt value of token (Actual token price * 10**6)
      * @return Number of tokens that can be purchased with the specified _usdtAmount.
      */
-    function _getTokenAmount(uint256 _usdtAmount, uint256 _ICOrate)
+    function _getTokenAmount(uint256 _usdtAmount, uint256 _absoluteUsdtPrice)
         internal
         pure
         returns (uint256)
     {
-        return _usdtAmount.div(_ICOrate);
+        _usdtAmount = _usdtAmount * (10**6);
+        _usdtAmount = _usdtAmount.div(_absoluteUsdtPrice);
+        return _usdtAmount;
     }
 
     /**
@@ -337,8 +344,9 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         onlyOwner
     {
         ICOdatas[_icoType].ICOstate = icoState;
-        if(icoState == IcoState.done) {
-            totalLeftover += (ICOdatas[_icoType].ICOsupply - ICOdatas[_icoType].ICOtokenAllocated);
+        if (icoState == IcoState.done) {
+            totalLeftover += (ICOdatas[_icoType].ICOsupply -
+                ICOdatas[_icoType].ICOtokenAllocated);
         }
     }
 
@@ -356,12 +364,15 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         totalLeftover -= amount;
     }
 
-    function getLeftover() // totalLeftover can be public maybe
+    function getLeftover()
         external
         view
-        onlyOwner returns(uint256) {
-            return totalLeftover;
-        }
+        // totalLeftover can be public maybe
+        onlyOwner
+        returns (uint256)
+    {
+        return totalLeftover;
+    }
 
     /**
      * @notice Owner can add an address to whitelist.
@@ -425,7 +436,6 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     function getVestingList(uint icoType)
         public
         view
-        onlyOwner
         returns (VestingScheduleData[] memory)
     {
         ICOdata memory data = ICOdatas[icoType];
@@ -439,11 +449,9 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
             icoType
         );
 
-        uint cliffTokenAllocation = ((vesting.cliffAndVestingAllocation *
-            (10**18)) * vesting.unlockRate) / 100; //wei
-        //uint cliffUsdtAllocation = (cliffTokenAllocation * vesting.investedUSDT) / (vesting.cliffAndVestingAllocation * (10**18)); //wei
-        uint cliffUsdtAllocation = cliffTokenAllocation *
-            (data.ICOrate / (10**18)); //wei
+        uint cliffTokenAllocation = (vesting.cliffAndVestingAllocation *
+            vesting.unlockRate) / 100;
+        uint cliffUsdtAllocation = cliffTokenAllocation / data.ICOrate;
         uint cliffUnlockDateTimestamp = vesting.initializationTime +
             (vesting.numberOfCliff * 30 days);
         scheduleArr[0] = VestingScheduleData({
@@ -456,12 +464,11 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
 
         uint vestingRateAfterCliff = (100 - vesting.unlockRate) /
             vesting.numberOfVesting;
-        uint usdtAmountAfterCliff = (data.ICOusdtRaised - cliffUsdtAllocation) /
-            data.ICOnumberOfVesting; //wei
-        uint tokenAmountAfterCliff = ((data.ICOtokenAllocated * (10**18)) -
-            cliffTokenAllocation) / data.ICOnumberOfVesting; //wei
-        //uint usdtAmountAfterCliff = ((vesting.vestingAllocation * (10**18) ) * vesting.investedUSDT) / vesting.numberOfVesting; //wei
-        //uint tokenAmountAfterCliff = (vesting.vestingAllocation * (10**18) ) / vesting.numberOfVesting; //wei
+
+        uint usdtAmountAfterCliff = (vesting.investedUSDT -
+            cliffUsdtAllocation) / data.ICOnumberOfVesting;
+        uint tokenAmountAfterCliff = vesting.vestingAllocation /
+            data.ICOnumberOfVesting;
 
         for (uint i = 0; i < vesting.numberOfVesting; ++i) {
             cliffUnlockDateTimestamp += 30 days;
