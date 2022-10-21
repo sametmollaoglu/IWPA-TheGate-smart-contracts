@@ -219,6 +219,12 @@ contract Vesting is Ownable {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
             _beneficiary
         ][_icoType];
+
+        require(
+            vestingSchedule.initializationTime != 0,
+            "vesting does not exist !"
+        );
+
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
             "You claimed all of your vesting."
@@ -229,6 +235,10 @@ contract Vesting is Ownable {
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
+        );
+        require(
+            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
+            "Cliff time is not ended yet."
         );
         //require(elapsedMonthNumber>=0,"elapsedMonthNumber is negative");
         if (
@@ -243,10 +253,7 @@ contract Vesting is Ownable {
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
         //require(vestedMonthNumber>=0,"vestedMonthNumber is negative");
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
-        );
+
         if (!vestingSchedule.tgeVested) {
             uint256 unlockAmount = (vestingSchedule.cliffAndVestingAllocation *
                 vestingSchedule.unlockRate) / 100;
@@ -270,6 +277,12 @@ contract Vesting is Ownable {
         VestingScheduleStruct memory vestingSchedule = vestingSchedules[
             _beneficiary
         ][_icoType];
+
+        require(
+            vestingSchedule.initializationTime != 0,
+            "vesting does not exist !"
+        );
+
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
             "You claimed all of your vesting."
@@ -280,6 +293,10 @@ contract Vesting is Ownable {
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
+        );
+        require(
+            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
+            "Cliff time is not ended yet."
         );
         //require(elapsedMonthNumber>=0,"elapsedMonthNumber is negative");
         if (
@@ -294,10 +311,7 @@ contract Vesting is Ownable {
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
         //require(vestedMonthNumber>=0,"vestedMonthNumber is negative");
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
-        );
+
         if (!vestingSchedule.tgeVested) {
             uint256 unlockAmount = (vestingSchedule.cliffAndVestingAllocation *
                 vestingSchedule.unlockRate) / 100;
@@ -323,6 +337,12 @@ contract Vesting is Ownable {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
             _beneficiary
         ][_icoType];
+
+        require(
+            vestingSchedule.initializationTime != 0,
+            "vesting does not exist !"
+        );
+
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
             "You claimed all of your vesting."
@@ -333,6 +353,10 @@ contract Vesting is Ownable {
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
+        );
+        require(
+            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
+            "Cliff time is not ended yet."
         );
         if (
             elapsedMonthNumber >
@@ -345,10 +369,7 @@ contract Vesting is Ownable {
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
-        );
+
         if (!vestingSchedule.tgeVested) {
             uint256 unlockUsdtAmount = (vestingSchedule.investedUSDT *
                 vestingSchedule.unlockRate) / 100;
@@ -371,9 +392,15 @@ contract Vesting is Ownable {
         view
         returns (uint256)
     {
-        VestingScheduleStruct storage vestingSchedule = vestingSchedules[
+        VestingScheduleStruct memory vestingSchedule = vestingSchedules[
             _beneficiary
         ][_icoType];
+
+        require(
+            vestingSchedule.initializationTime != 0,
+            "vesting does not exist !"
+        );
+
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
             "You claimed all of your vesting."
@@ -384,6 +411,10 @@ contract Vesting is Ownable {
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
+        );
+        require(
+            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
+            "Cliff time is not ended yet."
         );
         if (
             elapsedMonthNumber >
@@ -396,10 +427,7 @@ contract Vesting is Ownable {
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
-        );
+
         if (!vestingSchedule.tgeVested) {
             uint256 unlockUsdtAmount = (vestingSchedule.investedUSDT *
                 vestingSchedule.unlockRate) / 100;

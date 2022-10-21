@@ -25,7 +25,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
     mapping(uint256 => address[]) private icoMembers;
 
-    IERC20 public usdt = IERC20(0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8);
+    IERC20 public usdt = IERC20(0xD4Fc541236927E2EAf8F27606bD7309C1Fc2cbee);
     IERC20 public tenet;
 
     //State of ICO sales
@@ -153,7 +153,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         isIcoAvailable(_icoType)
     {
         ICOdata memory ico = ICOdatas[_icoType];
-
+        require(ico.ICOstartDate != 0, "ico does not exist !");
         address beneficiary = msg.sender;
         require(ico.ICOstartDate >= block.timestamp, "ICO date expired");
 
