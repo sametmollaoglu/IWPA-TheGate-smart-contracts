@@ -25,7 +25,7 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
     mapping(uint256 => address[]) private icoMembers;
 
-    IERC20 public usdt = IERC20(0xDA07165D4f7c84EEEfa7a4Ff439e039B7925d3dF); //will be tenet
+    IERC20 public usdt = IERC20(0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8);
     IERC20 public tenet;
 
     //State of ICO sales
@@ -70,6 +70,8 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         }
         _;
     }
+
+    event priceChanged(string ICOname, uint256 oldPrice, uint256 newPrice);
 
     /**
      * @param _token Address of the token being sold (token contract).
@@ -227,6 +229,10 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         uint256 releasableUsdtAmount = getReleasableUsdtAmount(
             beneficiary,
             _icoType
+        );
+        require(
+            releasableUsdtAmount > 0,
+            "ERROR at claimAsUsdt: Releasable USDT amount is 0."
         );
         _processPurchaseUSDT(beneficiary, releasableUsdtAmount);
         ICOdatas[_icoType].ICOusdtRaised -= releasableUsdtAmount;
@@ -414,6 +420,18 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
         tenet = IERC20(_tenetAddress);
     }
 
+    /**
+     * @dev Owner function. Change IWPA token contract address.
+     * @param _tokenAddress New IWPA token contract address.
+     */
+    function setTokenContract(address _tokenAddress) external onlyOwner {
+        require(
+            _tokenAddress != address(0),
+            "ERROR at Crowdsale setTokenContract: IWPA Token contract address shouldn't be zero address."
+        );
+        token = ERC20(_tokenAddress);
+    }
+
     struct VestingScheduleData {
         uint id;
         uint unlockDateTimestamp;
@@ -475,5 +493,15 @@ contract Crowdsale is ReentrancyGuard, Ownable, Vesting {
 
     function getICODatas() external view onlyOwner returns (ICOdata[] memory) {
         return ICOdatas;
+    }
+
+    function changeAbsoluteTokenUsdtPrice(
+        uint256 _newTokenPrice,
+        uint256 _icoType
+    ) external onlyOwner {
+        ICOdata storage data = ICOdatas[_icoType];
+        uint256 oldPrice = data.TokenAbsoluteUsdtPrice;
+        data.TokenAbsoluteUsdtPrice = _newTokenPrice;
+        emit priceChanged(data.ICOname, oldPrice, _newTokenPrice);
     }
 }

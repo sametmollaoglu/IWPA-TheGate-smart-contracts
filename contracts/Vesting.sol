@@ -226,8 +226,11 @@ contract Vesting is Ownable {
         uint256 releasableAmount = 0;
 
         uint256 currentTime = block.timestamp;
-        uint256 elapsedMonthNumber = (currentTime -
-            vestingSchedule.initializationTime) / 300;
+        uint256 elapsedMonthNumber = _getElapsedMonth(
+            vestingSchedule,
+            currentTime
+        );
+        //require(elapsedMonthNumber>=0,"elapsedMonthNumber is negative");
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -239,19 +242,18 @@ contract Vesting is Ownable {
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
+        //require(vestedMonthNumber>=0,"vestedMonthNumber is negative");
         require(
             elapsedMonthNumber >= vestingSchedule.numberOfCliff,
             "Cliff time is not ended yet."
         );
         if (!vestingSchedule.tgeVested) {
-            //absolute token hesaplanarak işlemler yapılırsa daha tutarlı çıkabilir
             uint256 unlockAmount = (vestingSchedule.cliffAndVestingAllocation *
                 vestingSchedule.unlockRate) / 100;
             releasableAmount += unlockAmount;
             vestingSchedule.tgeVested = true;
         }
         if (vestedMonthNumber > 0) {
-            //absolute token hesaplanarak işlemler yapılırsa daha tutarlı çıkabilir
             uint256 vestedAmount = (vestingSchedule.vestingAllocation /
                 vestingSchedule.numberOfVesting) * vestedMonthNumber;
             releasableAmount += vestedAmount;
@@ -275,9 +277,11 @@ contract Vesting is Ownable {
         uint256 releasableAmount = 0;
 
         uint256 currentTime = block.timestamp;
-        //ico is not started yet
-        uint256 elapsedMonthNumber = (currentTime -
-            vestingSchedule.initializationTime) / 300;
+        uint256 elapsedMonthNumber = _getElapsedMonth(
+            vestingSchedule,
+            currentTime
+        );
+        //require(elapsedMonthNumber>=0,"elapsedMonthNumber is negative");
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -289,6 +293,7 @@ contract Vesting is Ownable {
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
+        //require(vestedMonthNumber>=0,"vestedMonthNumber is negative");
         require(
             elapsedMonthNumber >= vestingSchedule.numberOfCliff,
             "Cliff time is not ended yet."
@@ -325,8 +330,10 @@ contract Vesting is Ownable {
         uint256 releasableUsdtAmount = 0;
 
         uint256 currentTime = block.timestamp;
-        uint256 elapsedMonthNumber = (currentTime -
-            vestingSchedule.initializationTime) / 300;
+        uint256 elapsedMonthNumber = _getElapsedMonth(
+            vestingSchedule,
+            currentTime
+        );
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -343,14 +350,12 @@ contract Vesting is Ownable {
             "Cliff time is not ended yet."
         );
         if (!vestingSchedule.tgeVested) {
-            //absolute hesaplanarak işlemler yapılırsa daha tutarlı çıkabilir
             uint256 unlockUsdtAmount = (vestingSchedule.investedUSDT *
                 vestingSchedule.unlockRate) / 100;
             releasableUsdtAmount += unlockUsdtAmount;
             vestingSchedule.tgeVested = true;
         }
         if (vestedMonthNumber > 0) {
-            //absolute hesaplanarak işlemler yapılırsa daha tutarlı çıkabilir
             uint256 totalVestingUsdtAmount = (vestingSchedule.investedUSDT *
                 (100 - vestingSchedule.unlockRate)) / 100;
             uint256 vestedUsdtAmount = (totalVestingUsdtAmount *
@@ -376,8 +381,10 @@ contract Vesting is Ownable {
         uint256 releasableUsdtAmount = 0;
 
         uint256 currentTime = block.timestamp;
-        uint256 elapsedMonthNumber = (currentTime -
-            vestingSchedule.initializationTime) / 300;
+        uint256 elapsedMonthNumber = _getElapsedMonth(
+            vestingSchedule,
+            currentTime
+        );
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -394,13 +401,11 @@ contract Vesting is Ownable {
             "Cliff time is not ended yet."
         );
         if (!vestingSchedule.tgeVested) {
-            //absolute hesaplanarak işlemler yapılırsa daha tutarlı çıkabilir
             uint256 unlockUsdtAmount = (vestingSchedule.investedUSDT *
                 vestingSchedule.unlockRate) / 100;
             releasableUsdtAmount += unlockUsdtAmount;
         }
         if (vestedMonthNumber > 0) {
-            //absolute hesaplanarak işlemler yapılırsa daha tutarlı çıkabilir
             uint256 totalVestingUsdtAmount = (vestingSchedule.investedUSDT *
                 (100 - vestingSchedule.unlockRate)) / 100;
             uint256 vestedUsdtAmount = (totalVestingUsdtAmount *
