@@ -11,25 +11,28 @@ contract Vesting is Ownable {
 
     //Address of the ERC20 token
     ERC20 public token;
-    uint256 private totalReleasedAllocation;
+    address crowdsaleContractAddress;
 
     mapping(address => mapping(uint256 => VestingScheduleStruct))
         internal vestingSchedules;
 
-    /**
-     * @dev Creates a vesting contract.
-     * @param tokenAddress Address of the ERC20 token contract
-     */
     constructor(address tokenAddress) {
         require(tokenAddress != address(0x0));
         token = ERC20(tokenAddress);
-        totalReleasedAllocation = 0;
     }
 
-    modifier onlyBeneficiaryOrOwner(address _beneficiary) {
+    modifier onlyBeneficiary(address _beneficiary) {
         require(
-            msg.sender == _beneficiary || msg.sender == owner(),
+            msg.sender == _beneficiary,
             "ERROR at release: Only beneficiary and owner can release vested tokens."
+        );
+        _;
+    }
+
+    modifier onlyCrowdsaleContract() {
+        require(
+            msg.sender == address(crowdsaleContractAddress),
+            "Only crowdsale contract can call this function."
         );
         _;
     }
@@ -44,15 +47,15 @@ contract Vesting is Ownable {
         uint256 IcoType,
         uint256 _tokenAbsoluteUsdtPrice
     );
-    event VestingScheduleRevoked(address account);
-    event AllocationReleased(address account, uint256 amount);
+
+    event VestingScheduleRevoked(address account, uint256 releasedAmount);
 
     struct VestingScheduleStruct {
-        address beneficiaryAddress;
-        uint256 initializationTime; //block.timestamp.now (vesting schedule initialization time)
+        address beneficiaryAddress; //Address of the vesting schedule beneficiary.
+        uint256 icoStartDate; //Ico start date
         uint256 numberOfCliff; //Number of cliff months
         uint256 numberOfVesting; //Number of vesting months
-        uint256 unlockRate; //Initial vesting of beneficiary
+        uint256 unlockRate; //Initial vesting rate of beneficiary
         bool isRevocable; // Whether or not the vesting is revocable
         bool revoked; // Whether or not the vesting has been revoked
         uint256 cliffAndVestingAllocation; // Total amount of tokens to be released at the end of the vesting cliff + vesting
@@ -62,11 +65,11 @@ contract Vesting is Ownable {
         uint256 icoType; //Type of ICO  0=>seed, 1=>private
         uint256 investedUSDT; //Beneficiary addresses and their investments
         bool isClaimed; //Shows whether assigned tokens is claimed or not
-        uint256 tokenAbsoluteUsdtPrice;
+        uint256 tokenAbsoluteUsdtPrice; //Absolute USDT price for a token
     }
 
     /**
-     * @notice Creates a new vesting schedule.
+     * @dev Creates a new vesting schedule.
      * @param _beneficiary Address of the beneficiary
      * @param _numberOfCliffMonths Number of cliff months
      * @param _numberOfVestingMonths Number of vesting months
@@ -74,6 +77,9 @@ contract Vesting is Ownable {
      * @param _isRevocable Whether can be revoked or not
      * @param _allocation Total allocation amount
      * @param _IcoType Ico type  0=>seed, 1=>private
+     * @param _investedUsdt Amount of invested USDT
+     * @param _icoStartDate Start date of ICO
+     * @param _tokenAbsoluteUsdtPrice Absolute USDT price for a token
      */
     function createVestingSchedule(
         address _beneficiary,
@@ -86,7 +92,7 @@ contract Vesting is Ownable {
         uint256 _investedUsdt,
         uint256 _icoStartDate,
         uint256 _tokenAbsoluteUsdtPrice
-    ) internal {
+    ) external onlyCrowdsaleContract {
         require(
             vestingSchedules[_beneficiary][_IcoType].beneficiaryAddress ==
                 address(0x0),
@@ -101,7 +107,7 @@ contract Vesting is Ownable {
             "ERROR at createVestingSchedule: Vesting cannot be 0 month"
         );
 
-        uint totalVestingAllocation = (_allocation -
+        uint256 totalVestingAllocation = (_allocation -
             (_unlockRate * _allocation) /
             100);
 
@@ -135,85 +141,44 @@ contract Vesting is Ownable {
         );
     }
 
-    function getBeneficiaryVesting(address beneficiary, uint icoType)
-        public
-        view
-        returns (VestingScheduleStruct memory)
-    {
-        require(
-            vestingSchedules[beneficiary][icoType].beneficiaryAddress !=
-                address(0),
-            "ERROR at getBeneficiaryVesting: There is no participating user with this address."
-        );
-        return vestingSchedules[beneficiary][icoType];
-    }
-
     /**
      * @notice Revokes given vesting schedule.
      * @param _beneficiary Address of the beneficiary.
      * @param _icoType Ico type
      */
     function revoke(address _beneficiary, uint256 _icoType) external onlyOwner {
-        require(
-            vestingSchedules[_beneficiary][_icoType].beneficiaryAddress !=
-                address(0x0),
-            "ERROR: Vesting Schedule already exist."
-        );
-        require(
-            vestingSchedules[_beneficiary][_icoType].isRevocable,
-            "ERROR at revoke: Target schedule is not revokable."
-        );
-        require(
-            !vestingSchedules[_beneficiary][_icoType].revoked,
-            "ERROR at revoked: Vesting Schedule is already revoked."
-        );
-
-        release(_beneficiary, _icoType);
-        vestingSchedules[_beneficiary][_icoType].revoked = true;
-        emit VestingScheduleRevoked(_beneficiary);
-    }
-
-    /**
-     * @notice Release vested tokens of the beneficiary.
-     * @param _beneficiary Address of the beneficiary.
-     * @param _icoType Type of the ICO.
-     */
-    function release(address _beneficiary, uint256 _icoType)
-        internal
-        onlyBeneficiaryOrOwner(_beneficiary)
-    {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
             _beneficiary
         ][_icoType];
-
+        require(
+            vestingSchedule.beneficiaryAddress != address(0x0),
+            "ERROR: Vesting Schedule already exist."
+        );
+        require(
+            vestingSchedule.isRevocable,
+            "ERROR at revoke: Target schedule is not revokable."
+        );
         require(
             !vestingSchedule.revoked,
-            "ERROR at release: Vesting Schedule is revoked."
+            "ERROR at revoked: Vesting Schedule has already revoked."
         );
 
-        uint256 releasableAmount = getReleasableAmount(_beneficiary, _icoType);
-
-        require(
-            releasableAmount > 0,
-            "ERROR at release: Releasable amount is 0."
-        );
-
+        uint256 releasableAmount = viewReleasableAmount(_beneficiary, _icoType);
         address payable beneficiaryAccount = payable(
             vestingSchedule.beneficiaryAddress
         );
 
-        token.safeTransferFrom(owner(), beneficiaryAccount, releasableAmount);
-        totalReleasedAllocation += releasableAmount;
-        emit AllocationReleased(_beneficiary, releasableAmount);
+        token.transferFrom(owner(), beneficiaryAccount, releasableAmount);
+        vestingSchedule.revoked = true;
+        emit VestingScheduleRevoked(_beneficiary, releasableAmount);
     }
 
     /**
-     * @notice Calculates the vested amount of given vesting schedule.
-     * @param _beneficiary Beneficiary vesting schedule struct.
-     * @param _icoType Beneficiary vesting schedule struct.
+     * @dev Calculates the vested amount of given vesting schedule.
      */
     function getReleasableAmount(address _beneficiary, uint256 _icoType)
-        internal
+        external
+        onlyCrowdsaleContract
         returns (uint256)
     {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
@@ -221,26 +186,30 @@ contract Vesting is Ownable {
         ][_icoType];
 
         require(
-            vestingSchedule.initializationTime != 0,
-            "vesting does not exist !"
+            vestingSchedule.icoStartDate != 0,
+            "ERROR at getReleasableAmount: Vesting does not exist."
         );
-
+        require(
+            block.timestamp > vestingSchedule.icoStartDate,
+            "ERROR at getReleasableAmount: ICO is not started yet"
+        );
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
-            "You claimed all of your vesting."
+            "ERROR at getReleasableAmount: You claimed all of your vesting."
         );
-        uint256 releasableAmount = 0;
 
+        uint256 releasableAmount = 0;
         uint256 currentTime = block.timestamp;
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
         );
+
         require(
             elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
+            "ERROR at getReleasableAmount: Cliff time is not ended yet."
         );
-        //require(elapsedMonthNumber>=0,"elapsedMonthNumber is negative");
+
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -249,10 +218,10 @@ contract Vesting is Ownable {
                 vestingSchedule.numberOfVesting +
                 vestingSchedule.numberOfCliff;
         }
+
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
-        //require(vestedMonthNumber>=0,"vestedMonthNumber is negative");
 
         if (!vestingSchedule.tgeVested) {
             uint256 unlockAmount = (vestingSchedule.cliffAndVestingAllocation *
@@ -269,6 +238,9 @@ contract Vesting is Ownable {
         return releasableAmount;
     }
 
+    /**
+     * @dev Calculates the vested amount of given vesting schedule.
+     */
     function viewReleasableAmount(address _beneficiary, uint256 _icoType)
         public
         view
@@ -279,26 +251,30 @@ contract Vesting is Ownable {
         ][_icoType];
 
         require(
-            vestingSchedule.initializationTime != 0,
-            "vesting does not exist !"
+            vestingSchedule.icoStartDate != 0,
+            "ERROR at viewReleasableAmount: Vesting does not exist."
         );
-
+        require(
+            block.timestamp > vestingSchedule.icoStartDate,
+            "ERROR at viewReleasableAmount: ICO is not started yet"
+        );
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
-            "You claimed all of your vesting."
+            "ERROR at viewReleasableAmount: You claimed all of your vesting."
         );
-        uint256 releasableAmount = 0;
 
+        uint256 releasableAmount = 0;
         uint256 currentTime = block.timestamp;
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
         );
+
         require(
             elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
+            "ERROR at viewReleasableAmount: Cliff time is not ended yet."
         );
-        //require(elapsedMonthNumber>=0,"elapsedMonthNumber is negative");
+
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -307,10 +283,10 @@ contract Vesting is Ownable {
                 vestingSchedule.numberOfVesting +
                 vestingSchedule.numberOfCliff;
         }
+
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
-        //require(vestedMonthNumber>=0,"vestedMonthNumber is negative");
 
         if (!vestingSchedule.tgeVested) {
             uint256 unlockAmount = (vestingSchedule.cliffAndVestingAllocation *
@@ -326,12 +302,11 @@ contract Vesting is Ownable {
     }
 
     /**
-     * @notice Get invested amount of USDT of vesting schedule by using beneficiary address and ico type
-     * @param _beneficiary Beneficiary vesting schedule struct.
-     * @param _icoType Beneficiary vesting schedule struct.
+     * @dev Get invested amount of USDT of vesting schedule
      */
     function getReleasableUsdtAmount(address _beneficiary, uint256 _icoType)
-        internal
+        external
+        onlyCrowdsaleContract
         returns (uint256)
     {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
@@ -339,25 +314,30 @@ contract Vesting is Ownable {
         ][_icoType];
 
         require(
-            vestingSchedule.initializationTime != 0,
-            "vesting does not exist !"
+            vestingSchedule.icoStartDate != 0,
+            "ERROR at getReleasableUsdtAmount: Vesting does not exist."
         );
-
+        require(
+            block.timestamp > vestingSchedule.icoStartDate,
+            "ERROR at getReleasableUsdtAmount: ICO is not started yet."
+        );
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
-            "You claimed all of your vesting."
+            "ERROR at getReleasableUsdtAmount: You claimed all of your vesting."
         );
-        uint256 releasableUsdtAmount = 0;
 
+        uint256 releasableUsdtAmount = 0;
         uint256 currentTime = block.timestamp;
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
         );
+
         require(
             elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
+            "ERROR at getReleasableUsdtAmount: Cliff time is not ended yet."
         );
+
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -366,6 +346,7 @@ contract Vesting is Ownable {
                 vestingSchedule.numberOfVesting +
                 vestingSchedule.numberOfCliff;
         }
+
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
@@ -387,6 +368,9 @@ contract Vesting is Ownable {
         return releasableUsdtAmount;
     }
 
+    /**
+     * @dev Get invested amount of USDT of vesting schedule
+     */
     function viewReleasableUsdtAmount(address _beneficiary, uint256 _icoType)
         public
         view
@@ -397,25 +381,30 @@ contract Vesting is Ownable {
         ][_icoType];
 
         require(
-            vestingSchedule.initializationTime != 0,
-            "vesting does not exist !"
+            vestingSchedule.icoStartDate != 0,
+            "ERROR at viewReleasableUsdtAmount: Vesting does not exist !"
         );
-
+        require(
+            block.timestamp > vestingSchedule.icoStartDate,
+            "ERROR at viewReleasableUsdtAmount: ICO is not started yet"
+        );
         require(
             vestingSchedule.releasedPeriod < vestingSchedule.numberOfVesting,
-            "You claimed all of your vesting."
+            "ERROR at viewReleasableUsdtAmount: You claimed all of your vesting."
         );
-        uint256 releasableUsdtAmount = 0;
 
+        uint256 releasableUsdtAmount = 0;
         uint256 currentTime = block.timestamp;
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
         );
+
         require(
             elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "Cliff time is not ended yet."
+            "ERROR at viewReleasableUsdtAmount: Cliff time is not ended yet."
         );
+
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -424,6 +413,7 @@ contract Vesting is Ownable {
                 vestingSchedule.numberOfVesting +
                 vestingSchedule.numberOfCliff;
         }
+
         uint256 vestedMonthNumber = elapsedMonthNumber -
             vestingSchedule.numberOfCliff -
             vestingSchedule.releasedPeriod;
@@ -444,7 +434,7 @@ contract Vesting is Ownable {
     }
 
     /**
-     * @notice Calculates the elapsed month of the given schedule so far.
+     * @dev Calculates the elapsed month of the given schedule so far.
      * @param vestingSchedule Beneficiary vesting schedule struct.
      * @param currentTime Given by parameter to avoid transaction call latency.
      */
@@ -452,13 +442,11 @@ contract Vesting is Ownable {
         VestingScheduleStruct memory vestingSchedule,
         uint256 currentTime
     ) internal pure returns (uint256) {
-        return (currentTime - vestingSchedule.initializationTime) / (300);
+        return (currentTime - vestingSchedule.icoStartDate) / (300);
     }
 
     /**
-     * @notice Get token allocation of vesting schedule by using beneficiary address and ico type
-     * @param _beneficiary Beneficiary vesting schedule struct.
-     * @param _icoType Beneficiary vesting schedule struct.
+     * @dev Get token allocation of vesting schedule by using beneficiary address and ico type
      */
     function getScheduleTokenAllocation(address _beneficiary, uint256 _icoType)
         external
@@ -469,15 +457,23 @@ contract Vesting is Ownable {
             vestingSchedules[_beneficiary][_icoType].cliffAndVestingAllocation;
     }
 
+    /**
+     * @dev Update specified vesting schedule start date.
+     */
     function updateVestingStartDate(
-        uint256 startDate,
+        uint256 _startDate,
         uint256 _icoType,
-        address beneficiary
+        address _beneficiary
     ) external onlyOwner {
-        vestingSchedules[beneficiary][_icoType].initializationTime = startDate;
+        require(
+            block.timestamp <
+                vestingSchedules[_beneficiary][_icoType].icoStartDate,
+            "ERROR at updateVestingStartDate: ICO is already started, start date has not changed."
+        );
+        vestingSchedules[_beneficiary][_icoType].icoStartDate = _startDate;
     }
 
-    /**
+    /*
      * @notice Deletes vesting schedule by using beneficiary address and ico type
      * @param _beneficiary Beneficiary vesting schedule struct.
      * @param _icoType Beneficiary vesting schedule struct.
@@ -487,4 +483,138 @@ contract Vesting is Ownable {
         delete vestingSchedules[_beneficiary][_icoType];
     }
     */
+
+    /**
+     * @dev Only crowdsale contract functions can call this function. Using for returning specific vesting schedule.
+     */
+    function getBeneficiaryVesting(address beneficiary, uint256 icoType)
+        public
+        view
+        onlyCrowdsaleContract
+        returns (VestingScheduleStruct memory)
+    {
+        return vestingSchedules[beneficiary][icoType];
+    }
+
+    /**
+     * @dev Only crowdsale contract functions can call this function. Crowdsale buytokens function calls this function.
+     */
+    function increaseCliffAndVestingAllocation(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _tokenAmount
+    ) external onlyCrowdsaleContract {
+        vestingSchedules[_beneficiary][_icoType]
+            .cliffAndVestingAllocation += _tokenAmount;
+    }
+
+    /**
+     * @dev Only crowdsale contract functions can call this function. Crowdsale buytokens function calls this function.
+     */
+    function increaseVestingAllocation(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _totalVestingAllocation
+    ) external onlyCrowdsaleContract {
+        vestingSchedules[_beneficiary][_icoType]
+            .vestingAllocation += _totalVestingAllocation;
+    }
+
+    /**
+     * @dev Only crowdsale contract functions can call this function. Crowdsale buytokens function calls this function.
+     */
+    function increaseInvestedUsdt(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _usdtAmount
+    ) external onlyCrowdsaleContract {
+        vestingSchedules[_beneficiary][_icoType].investedUSDT += _usdtAmount;
+    }
+
+    /**
+     * @dev Owner function. Change crowdsale contract address.
+     * @param _newCrowdsaleContractAddress New crowdsale contract address.
+     */
+    function setCrowdsaleContractAddress(address _newCrowdsaleContractAddress)
+        external
+        onlyOwner
+    {
+        require(
+            _newCrowdsaleContractAddress != address(0),
+            "ERROR at Vesting setCrowdsaleContractAddress: Crowdsale contract address shouldn't be zero address."
+        );
+        crowdsaleContractAddress = address(_newCrowdsaleContractAddress);
+    }
+
+    struct VestingScheduleData {
+        uint256 id;
+        uint256 unlockDateTimestamp;
+        uint256 tokenAmount;
+        uint256 usdtAmount;
+        uint256 vestingRate;
+    }
+
+    /**
+     * @dev Only crowdsale contract functions can call this function. Using for returning vesting stages to crowdsale getVestingList function.
+     */
+    function getVestingListDetails(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _tokenAbsoluteUsdtPrice,
+        uint256 _ICOnumberOfVesting
+    )
+        public
+        view
+        onlyCrowdsaleContract
+        returns (VestingScheduleData[] memory vestingSchedule)
+    {
+        uint256 size = _ICOnumberOfVesting + 1;
+        VestingScheduleData[] memory scheduleArr = new VestingScheduleData[](
+            size
+        );
+
+        VestingScheduleStruct memory vesting = getBeneficiaryVesting(
+            _beneficiary,
+            _icoType
+        );
+
+        require(
+            vesting.tokenAbsoluteUsdtPrice != 0,
+            "ERROR at getVestingListDetail: There is no participating user with this address."
+        );
+
+        uint256 cliffTokenAllocation = (vesting.cliffAndVestingAllocation *
+            vesting.unlockRate) / 100;
+        uint256 cliffUsdtAllocation = (cliffTokenAllocation *
+            _tokenAbsoluteUsdtPrice) / 10**6;
+        uint256 cliffUnlockDateTimestamp = vesting.icoStartDate +
+            (vesting.numberOfCliff * 30 days);
+        scheduleArr[0] = VestingScheduleData({
+            id: 0,
+            unlockDateTimestamp: cliffUnlockDateTimestamp,
+            tokenAmount: cliffTokenAllocation,
+            usdtAmount: cliffUsdtAllocation,
+            vestingRate: vesting.unlockRate
+        });
+
+        uint256 vestingRateAfterCliff = (100 - vesting.unlockRate) /
+            vesting.numberOfVesting;
+
+        uint256 usdtAmountAfterCliff = (vesting.investedUSDT -
+            cliffUsdtAllocation) / _ICOnumberOfVesting;
+        uint256 tokenAmountAfterCliff = vesting.vestingAllocation /
+            _ICOnumberOfVesting;
+
+        for (uint256 i = 0; i < vesting.numberOfVesting; ++i) {
+            cliffUnlockDateTimestamp += 30 days;
+            scheduleArr[i + 1] = VestingScheduleData({
+                id: i + 1,
+                unlockDateTimestamp: cliffUnlockDateTimestamp,
+                tokenAmount: tokenAmountAfterCliff,
+                usdtAmount: usdtAmountAfterCliff,
+                vestingRate: vestingRateAfterCliff
+            });
+        }
+        return scheduleArr;
+    }
 }
