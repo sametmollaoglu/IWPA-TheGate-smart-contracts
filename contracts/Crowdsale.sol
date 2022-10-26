@@ -556,11 +556,29 @@ contract Crowdsale is ReentrancyGuard, Ownable {
     /*
      * @dev Owner can add an address to whitelist.
      */
-    function addToWhitelist(address _beneficiary, uint256 _icoType)
-        external
+    function addToWhitelist(address[] memory _beneficiaries, uint256 _icoType)
+        public
         onlyOwner
     {
+        for (uint256 i = 0; i < _beneficiaries.length; i++) {
+            addAddressToWhitelist(_beneficiaries[i], _icoType);
+        }
+    }
+
+    function addAddressToWhitelist(address _beneficiary, uint256 _icoType)
+        public
+        onlyOwner
+    {
+        require(!isWhitelisted(_beneficiary, _icoType), "Already whitelisted");
         whitelist[_icoType][_beneficiary] = true;
+    }
+
+    function isWhitelisted(address _beneficiary, uint256 _icoType)
+        public
+        view
+        returns (bool)
+    {
+        return whitelist[_icoType][_beneficiary] == true;
     }
 
     /**
