@@ -21,15 +21,7 @@ contract Vesting is Ownable {
         token = ERC20(tokenAddress);
     }
 
-    modifier onlyBeneficiary(address _beneficiary) {
-        require(
-            msg.sender == _beneficiary,
-            "ERROR at release: Only beneficiary and owner can release vested tokens."
-        );
-        _;
-    }
-
-    modifier onlyCrowdsaleContract() {
+    modifier onlyCrowdsale() {
         require(
             msg.sender == address(crowdsaleContractAddress),
             "Only crowdsale contract can call this function."
@@ -92,15 +84,11 @@ contract Vesting is Ownable {
         uint256 _investedUsdt,
         uint256 _icoStartDate,
         uint256 _tokenAbsoluteUsdtPrice
-    ) external onlyCrowdsaleContract {
+    ) external onlyCrowdsale {
         require(
             vestingSchedules[_beneficiary][_IcoType].beneficiaryAddress ==
                 address(0x0),
             "ERROR (createVestingSchedule): Schedule already exist."
-        );
-        require(
-            _numberOfCliffMonths > 0,
-            "ERROR at createVestingSchedule: Cliff cannot be 0 month"
         );
         require(
             _numberOfVestingMonths > 0,
@@ -178,7 +166,7 @@ contract Vesting is Ownable {
      */
     function getReleasableAmount(address _beneficiary, uint256 _icoType)
         external
-        onlyCrowdsaleContract
+        onlyCrowdsale
         returns (uint256)
     {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
@@ -203,11 +191,6 @@ contract Vesting is Ownable {
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
-        );
-
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "ERROR at getReleasableAmount: Cliff time is not ended yet."
         );
 
         if (
@@ -270,11 +253,6 @@ contract Vesting is Ownable {
             currentTime
         );
 
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "ERROR at viewReleasableAmount: Cliff time is not ended yet."
-        );
-
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -306,7 +284,7 @@ contract Vesting is Ownable {
      */
     function getReleasableUsdtAmount(address _beneficiary, uint256 _icoType)
         external
-        onlyCrowdsaleContract
+        onlyCrowdsale
         returns (uint256)
     {
         VestingScheduleStruct storage vestingSchedule = vestingSchedules[
@@ -331,11 +309,6 @@ contract Vesting is Ownable {
         uint256 elapsedMonthNumber = _getElapsedMonth(
             vestingSchedule,
             currentTime
-        );
-
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "ERROR at getReleasableUsdtAmount: Cliff time is not ended yet."
         );
 
         if (
@@ -400,11 +373,6 @@ contract Vesting is Ownable {
             currentTime
         );
 
-        require(
-            elapsedMonthNumber >= vestingSchedule.numberOfCliff,
-            "ERROR at viewReleasableUsdtAmount: Cliff time is not ended yet."
-        );
-
         if (
             elapsedMonthNumber >
             vestingSchedule.numberOfVesting + vestingSchedule.numberOfCliff
@@ -442,7 +410,7 @@ contract Vesting is Ownable {
         VestingScheduleStruct memory vestingSchedule,
         uint256 currentTime
     ) internal pure returns (uint256) {
-        return (currentTime - vestingSchedule.icoStartDate) / (300);
+        return (currentTime - vestingSchedule.icoStartDate) / (30 days);
     }
 
     /**
@@ -490,7 +458,7 @@ contract Vesting is Ownable {
     function getBeneficiaryVesting(address beneficiary, uint256 icoType)
         public
         view
-        onlyCrowdsaleContract
+        onlyCrowdsale
         returns (VestingScheduleStruct memory)
     {
         return vestingSchedules[beneficiary][icoType];
@@ -503,7 +471,7 @@ contract Vesting is Ownable {
         address _beneficiary,
         uint256 _icoType,
         uint256 _tokenAmount
-    ) external onlyCrowdsaleContract {
+    ) external onlyCrowdsale {
         vestingSchedules[_beneficiary][_icoType]
             .cliffAndVestingAllocation += _tokenAmount;
     }
@@ -515,7 +483,7 @@ contract Vesting is Ownable {
         address _beneficiary,
         uint256 _icoType,
         uint256 _totalVestingAllocation
-    ) external onlyCrowdsaleContract {
+    ) external onlyCrowdsale {
         vestingSchedules[_beneficiary][_icoType]
             .vestingAllocation += _totalVestingAllocation;
     }
@@ -527,7 +495,7 @@ contract Vesting is Ownable {
         address _beneficiary,
         uint256 _icoType,
         uint256 _usdtAmount
-    ) external onlyCrowdsaleContract {
+    ) external onlyCrowdsale {
         vestingSchedules[_beneficiary][_icoType].investedUSDT += _usdtAmount;
     }
 
@@ -565,7 +533,7 @@ contract Vesting is Ownable {
     )
         public
         view
-        onlyCrowdsaleContract
+        onlyCrowdsale
         returns (VestingScheduleData[] memory vestingSchedule)
     {
         uint256 size = _ICOnumberOfVesting + 1;

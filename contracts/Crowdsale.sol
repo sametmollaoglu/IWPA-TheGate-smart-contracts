@@ -32,7 +32,13 @@ contract Crowdsale is ReentrancyGuard, Ownable {
 
     // Address where funds are collected as USDT
     address payable public usdtWallet;
+    // Address where TENET tokens are stored
+    address payable public tenetWallet;
+
     ERC20 public token;
+    IERC20 public usdt = IERC20(0xA2c7341dAdB120aa638795Dc73f7c74Ebd35D868);
+    IERC20 public tenet;
+
     Vesting vestingContract;
     ICOdata[] private ICOdatas;
 
@@ -42,9 +48,6 @@ contract Crowdsale is ReentrancyGuard, Ownable {
     mapping(uint256 => mapping(address => bool)) private whitelist;
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
     mapping(uint256 => address[]) private icoMembers;
-
-    IERC20 public usdt = IERC20(0xD4Fc541236927E2EAf8F27606bD7309C1Fc2cbee);
-    IERC20 public tenet;
 
     event tokenClaimed(
         address _beneficiary,
@@ -88,13 +91,16 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         uint256 ICOstartDate;
         //Absolute token price (tokenprice(USDT) * (10**6))
         uint256 TokenAbsoluteUsdtPrice;
+        //If the team vesting data, should be free participation vesting for only to specific addresses
+        bool IsFree;
     }
 
     //Checks whether the specific ICO sale is active or not
     modifier isIcoAvailable(uint256 _icoType) {
         require(ICOdatas[_icoType].ICOstartDate != 0, "Ico does not exist !");
         require(
-            ICOdatas[_icoType].ICOstate != IcoState.nonActive,
+            ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist ||
+                ICOdatas[_icoType].ICOstate == IcoState.active,
             "ICO is not active."
         );
         if (ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist) {
@@ -148,12 +154,15 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         uint256 _vestingMonths,
         uint8 _unlockRate,
         uint256 _startDate,
-        uint256 _tokenAbsoluteUsdtPrice
+        uint256 _tokenAbsoluteUsdtPrice, //0 if free
+        bool _isFree
     ) external onlyOwner {
-        require(
-            _tokenAbsoluteUsdtPrice > 0,
-            "ERROR at createICO: Token price should be bigger than zero."
-        );
+        if (!_isFree) {
+            require(
+                _tokenAbsoluteUsdtPrice > 0,
+                "ERROR at createICO: Token price should be bigger than zero."
+            );
+        }
         require(
             _supply > 0,
             "ERROR at createICO: Supply should be bigger than zero."
@@ -180,7 +189,8 @@ contract Crowdsale is ReentrancyGuard, Ownable {
                 ICOnumberOfVesting: _vestingMonths,
                 ICOunlockRate: _unlockRate,
                 ICOstartDate: _startDate,
-                TokenAbsoluteUsdtPrice: _tokenAbsoluteUsdtPrice
+                TokenAbsoluteUsdtPrice: _tokenAbsoluteUsdtPrice,
+                IsFree: _isFree
             })
         );
     }
@@ -198,6 +208,10 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         ICOdata memory ico = ICOdatas[_icoType];
         address beneficiary = msg.sender;
 
+        require(
+            !ICOdatas[_icoType].IsFree,
+            "This token distribution is exclusive to the team only."
+        );
         require(
             ico.ICOstartDate != 0,
             "ERROR at buyTokens: Ico does not exist."
@@ -255,6 +269,52 @@ contract Crowdsale is ReentrancyGuard, Ownable {
 
         _updatePurchasingState(_usdtAmount, tokenAmount, _icoType);
         _forwardFunds(_usdtAmount);
+        if (isIcoMember[beneficiary][_icoType] == false) {
+            isIcoMember[beneficiary][_icoType] = true;
+            icoMembers[_icoType].push(beneficiary);
+        }
+    }
+
+    function addingTeamMemberToVesting(uint256 _icoType, uint256 _tokenAmount)
+        public
+        onlyOwner
+        nonReentrant
+        isIcoAvailable(_icoType)
+    {
+        ICOdata memory ico = ICOdatas[_icoType];
+        address beneficiary = msg.sender;
+
+        require(beneficiary != address(0));
+        require(
+            ico.ICOstartDate != 0,
+            "ERROR at addingTeamParticipant: Ico does not exist."
+        );
+        require(ICOdatas[_icoType].IsFree, "");
+        require(
+            ico.ICOstartDate >= block.timestamp,
+            "ERROR at addingTeamParticipant: ICO date expired."
+        );
+        //_preValidatePurchase(beneficiary, _tokenAmount, _icoType);
+        require(
+            ICOdatas[_icoType].ICOtokenAllocated + _tokenAmount <=
+                ICOdatas[_icoType].ICOsupply,
+            "Not enough token in the ICO supply"
+        );
+
+        vestingContract.createVestingSchedule(
+            beneficiary,
+            ico.ICOnumberOfCliff,
+            ico.ICOnumberOfVesting,
+            ico.ICOunlockRate,
+            true,
+            _tokenAmount,
+            _icoType,
+            0,
+            ico.ICOstartDate,
+            0
+        );
+
+        _updatePurchasingState(0, _tokenAmount, _icoType);
         if (isIcoMember[beneficiary][_icoType] == false) {
             isIcoMember[beneficiary][_icoType] = true;
             icoMembers[_icoType].push(beneficiary);
@@ -323,6 +383,32 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             ICOdatas[_icoType].TokenAbsoluteUsdtPrice);
     }
 
+    function claimTeamVesting(uint256 _icoType)
+        public
+        nonReentrant
+        isIcoAvailable(_icoType)
+    {
+        address beneficiary = msg.sender;
+        uint256 releasableAmount = vestingContract.getReleasableAmount(
+            beneficiary,
+            _icoType
+        );
+
+        require(
+            releasableAmount > 0,
+            "ERROR at claimTeamVesting: Releasable amount is 0."
+        );
+        require(
+            !vestingContract
+                .getBeneficiaryVesting(beneficiary, _icoType)
+                .revoked,
+            "ERROR at claimTeamVesting: Vesting Schedule is revoked."
+        );
+
+        _processPurchaseToken(beneficiary, _icoType, releasableAmount);
+        ICOdatas[_icoType].ICOtokenSold += releasableAmount;
+    }
+
     /**
      * @dev Validation of an incoming purchase request. Use require statements to revert state when conditions are not met.
      * @param _beneficiary Address performing the token purchase
@@ -366,7 +452,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         uint256 _icoType,
         uint256 _releasableUsdt
     ) internal {
-        usdt.transferFrom(usdtWallet, _beneficiary, _releasableUsdt);
+        usdt.transferFrom(tenetWallet, _beneficiary, _releasableUsdt); //usdt contract will be tenet contract
         emit UsdtClaimed(_beneficiary, _icoType, _releasableUsdt);
     }
 
@@ -418,6 +504,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
 
     /**
      * @dev Change ICO state, can start or end ICO sale.
+     * @notice Team vestings should be onlywhitelist state
      */
     function changeIcoState(uint256 _icoType, IcoState _icoState)
         external
@@ -585,5 +672,16 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             "ERROR at Crowdsale setVestingContractAddress: Vesting contract address shouldn't be zero address."
         );
         vestingContract = Vesting(_newVestingContractAddress);
+    }
+
+    function setUsdtContractAddress(address _newUsdtContractAddress)
+        external
+        onlyOwner
+    {
+        require(
+            _newUsdtContractAddress != address(0),
+            "ERROR at Crowdsale setUsdtContractAddress: Usdt contract address shouldn't be zero address."
+        );
+        usdt = ERC20(_newUsdtContractAddress);
     }
 }
