@@ -556,23 +556,22 @@ contract Vesting is Ownable {
         uint256 cliffUsdtAllocation = (cliffTokenAllocation *
             _tokenAbsoluteUsdtPrice) / 10**6;
         uint256 cliffUnlockDateTimestamp = vesting.icoStartDate;
-
         scheduleArr[0] = VestingScheduleData({
             id: 0,
             unlockDateTimestamp: cliffUnlockDateTimestamp,
             tokenAmount: cliffTokenAllocation,
             usdtAmount: cliffUsdtAllocation,
-            vestingRate: vesting.unlockRate
+            vestingRate: vesting.unlockRate * 1000
         });
 
-        uint256 vestingRateAfterCliff = (100 - vesting.unlockRate) /
+        uint256 vestingRateAfterCliff = (1000 * (100 - vesting.unlockRate)) /
             vesting.numberOfVesting;
 
         uint256 usdtAmountAfterCliff = (vesting.investedUSDT -
             cliffUsdtAllocation) / _ICOnumberOfVesting;
         uint256 tokenAmountAfterCliff = vesting.vestingAllocation /
             _ICOnumberOfVesting;
-
+        cliffUnlockDateTimestamp += (30 days * vesting.numberOfCliff);
         for (uint256 i = 0; i < vesting.numberOfVesting; ++i) {
             cliffUnlockDateTimestamp += 30 days;
             scheduleArr[i + 1] = VestingScheduleData({
