@@ -573,7 +573,6 @@ contract Vesting is Ownable {
             _ICOnumberOfVesting;
         cliffUnlockDateTimestamp += (30 days * vesting.numberOfCliff);
         for (uint256 i = 0; i < vesting.numberOfVesting; ++i) {
-            cliffUnlockDateTimestamp += 30 days;
             scheduleArr[i + 1] = VestingScheduleData({
                 id: i + 1,
                 unlockDateTimestamp: cliffUnlockDateTimestamp,
@@ -581,7 +580,8 @@ contract Vesting is Ownable {
                 usdtAmount: usdtAmountAfterCliff,
                 vestingRate: vestingRateAfterCliff
             });
+            cliffUnlockDateTimestamp += 30 days;
         }
         return scheduleArr;
     }
-}
+}  
