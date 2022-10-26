@@ -609,6 +609,21 @@ contract Crowdsale is ReentrancyGuard, Ownable {
     }
 
     /**
+     * @dev Owner function. Change usdt wallet address.
+     * @param _tenetWalletAddress New Tenet wallet address.
+     */
+    function changeTenetWalletAddress(address payable _tenetWalletAddress)
+        public
+        onlyOwner
+    {
+        require(
+            _tenetWalletAddress != address(0),
+            "ERROR at Crowdsale changeTenetWalletAddress: Tenet wallet address shouldn't be zero address."
+        );
+        tenetWallet = _tenetWalletAddress;
+    }
+
+    /**
      * @dev Owner function. Change tenet contract address.
      * @param _tenetAddress New tenet contract address.
      */
