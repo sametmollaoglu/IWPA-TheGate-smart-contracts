@@ -20,13 +20,13 @@ interface IVesting {
     }
 
     function getVestingListDetails(
-        address _beneficiary, 
+        address _beneficiary,
         uint256 _icoType,
         uint256 _tokenAbsoluteUsdtPrice,
         uint256 _ICOnumberOfVesting
     ) external view returns (VestingScheduleData[] memory vestingSchedule);
 }
- 
+
 contract Crowdsale is ReentrancyGuard, Ownable {
     using SafeMath for uint256;
 
@@ -34,7 +34,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
     address payable public usdtWallet;
     // Address where TENET tokens are stored
     address payable public tenetWallet;
- 
+
     ERC20 public token;
     IERC20 public usdt = IERC20(0xA2c7341dAdB120aa638795Dc73f7c74Ebd35D868);
     IERC20 public tenet;
@@ -101,7 +101,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         require(
             ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist ||
                 ICOdatas[_icoType].ICOstate == IcoState.active,
-            "ICO is not active." 
+            "ICO is not active."
         );
         if (ICOdatas[_icoType].ICOstate == IcoState.onlyWhitelist) {
             require(whitelist[_icoType][msg.sender], "Member not in whitelist");
@@ -112,7 +112,10 @@ contract Crowdsale is ReentrancyGuard, Ownable {
     //Checks whether the specific ICO claim is active or not
     modifier isClaimAvailable(uint256 _icoType) {
         require(ICOdatas[_icoType].ICOstartDate != 0, "Ico does not exist !");
-        require(ICOdatas[_icoType].ICOstate != IcoState.nonActive,"Claim not available");
+        require(
+            ICOdatas[_icoType].ICOstate != IcoState.nonActive,
+            "Claim not available"
+        );
         _;
     }
 
@@ -282,16 +285,13 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         }
     }
 
-    function addingTeamMemberToVesting(uint256 _icoType, uint256 _tokenAmount)
-        public
-        onlyOwner
-        nonReentrant
-        isIcoAvailable(_icoType)
-    {
+    function addingTeamMemberToVesting(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _tokenAmount
+    ) public onlyOwner nonReentrant isIcoAvailable(_icoType) {
         ICOdata memory ico = ICOdatas[_icoType];
-        address beneficiary = msg.sender;
-
-        require(beneficiary != address(0));
+        require(_beneficiary != address(0));
         require(
             ico.ICOstartDate != 0,
             "ERROR at addingTeamParticipant: Ico does not exist."
@@ -301,15 +301,14 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             ico.ICOstartDate >= block.timestamp,
             "ERROR at addingTeamParticipant: ICO date expired."
         );
-        //_preValidatePurchase(beneficiary, _tokenAmount, _icoType);
+        //_preValidatePurchase(_beneficiary, _tokenAmount, _icoType);
         require(
             ICOdatas[_icoType].ICOtokenAllocated + _tokenAmount <=
                 ICOdatas[_icoType].ICOsupply,
             "Not enough token in the ICO supply"
         );
-
         vestingContract.createVestingSchedule(
-            beneficiary,
+            _beneficiary,
             ico.ICOnumberOfCliff,
             ico.ICOnumberOfVesting,
             ico.ICOunlockRate,
@@ -320,11 +319,10 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             ico.ICOstartDate,
             0
         );
-
         _updatePurchasingState(0, _tokenAmount, _icoType);
-        if (isIcoMember[beneficiary][_icoType] == false) {
-            isIcoMember[beneficiary][_icoType] = true;
-            icoMembers[_icoType].push(beneficiary);
+        if (isIcoMember[_beneficiary][_icoType] == false) {
+            isIcoMember[_beneficiary][_icoType] = true;
+            icoMembers[_icoType].push(_beneficiary);
         }
     }
 
@@ -605,7 +603,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
      * @param _usdtWalletAddress New USDT wallet address.
      */
     function changeUSDTWalletAddress(address payable _usdtWalletAddress)
-        public 
+        public
         onlyOwner
     {
         require(
@@ -613,7 +611,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             "ERROR at Crowdsale changeUSDTAddress: USDT wallet address shouldn't be zero address."
         );
         usdtWallet = _usdtWalletAddress;
-    } 
+    }
 
     /**
      * @dev Owner function. Change usdt wallet address.
@@ -629,6 +627,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         );
         tenetWallet = _tenetWalletAddress;
     }
+
     /**
      * @dev Owner function. Change tenet contract address.
      * @param _tenetAddress New tenet contract address.
@@ -651,7 +650,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             "ERROR at Crowdsale setTokenContract: IWPA Token contract address shouldn't be zero address."
         );
         token = ERC20(_tokenAddress);
-    } 
+    }
 
     /**
      * @dev Returns details of each vesting stages.
@@ -696,7 +695,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         uint256 oldPrice = data.TokenAbsoluteUsdtPrice;
         data.TokenAbsoluteUsdtPrice = _newTokenPrice;
         emit priceChanged(data.ICOname, oldPrice, _newTokenPrice);
-    } 
+    }
 
     /**
      * @dev Owner function. Change vesting contract address.
@@ -723,4 +722,4 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         );
         usdt = ERC20(_newUsdtContractAddress);
     }
-}  
+}

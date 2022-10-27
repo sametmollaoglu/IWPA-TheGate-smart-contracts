@@ -584,4 +584,4 @@ contract Vesting is Ownable {
         }
         return scheduleArr;
     }
-}  
+}
