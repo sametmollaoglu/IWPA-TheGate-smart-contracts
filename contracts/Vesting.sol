@@ -174,6 +174,10 @@ contract Vesting is Ownable {
         ][_icoType];
 
         require(
+            _beneficiary != address(0),
+            "ERROR at getReleasableAmount: Beneficiary address is not valid."
+        );
+        require(
             vestingSchedule.icoStartDate != 0,
             "ERROR at getReleasableAmount: Vesting does not exist."
         );
@@ -234,6 +238,10 @@ contract Vesting is Ownable {
         ][_icoType];
 
         require(
+            _beneficiary != address(0),
+            "ERROR at viewReleasableAmount: Beneficiary address is not valid."
+        );
+        require(
             vestingSchedule.icoStartDate != 0,
             "ERROR at viewReleasableAmount: Vesting does not exist."
         );
@@ -291,6 +299,10 @@ contract Vesting is Ownable {
             _beneficiary
         ][_icoType];
 
+        require(
+            _beneficiary != address(0),
+            "ERROR at getReleasableUsdtAmount: Beneficiary address is not valid."
+        );
         require(
             vestingSchedule.icoStartDate != 0,
             "ERROR at getReleasableUsdtAmount: Vesting does not exist."
@@ -353,6 +365,10 @@ contract Vesting is Ownable {
             _beneficiary
         ][_icoType];
 
+        require(
+            _beneficiary != address(0),
+            "ERROR at viewReleasableUsdtAmount: Beneficiary address is not valid."
+        );
         require(
             vestingSchedule.icoStartDate != 0,
             "ERROR at viewReleasableUsdtAmount: Vesting does not exist !"
@@ -546,10 +562,10 @@ contract Vesting is Ownable {
             _icoType
         );
 
-        require(
-            vesting.tokenAbsoluteUsdtPrice != 0,
+        /*require(
+            vesting.icoStartDate==0,
             "ERROR at getVestingListDetail: There is no participating user with this address."
-        );
+        );*/
 
         uint256 cliffTokenAllocation = (vesting.cliffAndVestingAllocation *
             vesting.unlockRate) / 100;
@@ -573,6 +589,7 @@ contract Vesting is Ownable {
             _ICOnumberOfVesting;
         cliffUnlockDateTimestamp += (30 days * vesting.numberOfCliff);
         for (uint256 i = 0; i < vesting.numberOfVesting; ++i) {
+            cliffUnlockDateTimestamp += 30 days;
             scheduleArr[i + 1] = VestingScheduleData({
                 id: i + 1,
                 unlockDateTimestamp: cliffUnlockDateTimestamp,
@@ -580,7 +597,6 @@ contract Vesting is Ownable {
                 usdtAmount: usdtAmountAfterCliff,
                 vestingRate: vestingRateAfterCliff
             });
-            cliffUnlockDateTimestamp += 30 days;
         }
         return scheduleArr;
     }
