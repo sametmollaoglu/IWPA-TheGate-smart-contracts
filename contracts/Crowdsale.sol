@@ -5,10 +5,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contracts/Vesting.sol";
-
-//seed sale flag => 0
-//private sale flag => 1
 
 interface IVesting {
     struct VestingScheduleData {
@@ -18,6 +14,23 @@ interface IVesting {
         uint256 usdtAmount;
         uint256 vestingRate;
     }
+    struct VestingScheduleStruct {
+        address beneficiaryAddress;
+        uint256 icoStartDate;
+        uint256 numberOfCliff;
+        uint256 numberOfVesting;
+        uint256 unlockRate;
+        bool isRevocable;
+        bool revoked;
+        uint256 cliffAndVestingAllocation;
+        uint256 vestingAllocation;
+        bool tgeVested;
+        uint256 releasedPeriod;
+        uint256 icoType;
+        uint256 investedUSDT;
+        bool isClaimed;
+        uint256 tokenAbsoluteUsdtPrice;
+    }
 
     function getVestingListDetails(
         address _beneficiary,
@@ -25,6 +38,50 @@ interface IVesting {
         uint256 _tokenAbsoluteUsdtPrice,
         uint256 _ICOnumberOfVesting
     ) external view returns (VestingScheduleData[] memory vestingSchedule);
+
+    function getBeneficiaryVesting(address beneficiary, uint256 icoType)
+        external
+        view
+        returns (VestingScheduleStruct memory);
+
+    function createVestingSchedule(
+        address _beneficiary,
+        uint256 _numberOfCliffMonths,
+        uint256 _numberOfVestingMonths,
+        uint256 _unlockRate,
+        bool _isRevocable,
+        uint256 _allocation,
+        uint256 _IcoType,
+        uint256 _investedUsdt,
+        uint256 _icoStartDate,
+        uint256 _tokenAbsoluteUsdtPrice
+    ) external;
+
+    function increaseCliffAndVestingAllocation(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _tokenAmount
+    ) external;
+
+    function increaseVestingAllocation(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _totalVestingAllocation
+    ) external;
+
+    function increaseInvestedUsdt(
+        address _beneficiary,
+        uint256 _icoType,
+        uint256 _usdtAmount
+    ) external;
+
+    function getReleasableAmount(address _beneficiary, uint256 _icoType)
+        external
+        returns (uint256);
+
+    function getReleasableUsdtAmount(address _beneficiary, uint256 _icoType)
+        external
+        returns (uint256);
 }
 
 contract Crowdsale is ReentrancyGuard, Ownable {
@@ -39,7 +96,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
     IERC20 public usdt = IERC20(0xA2c7341dAdB120aa638795Dc73f7c74Ebd35D868);
     IERC20 public tenet;
 
-    Vesting vestingContract;
+    IVesting vestingContract;
     ICOdata[] private ICOdatas;
 
     uint256 private totalAllocation;
@@ -92,7 +149,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         //Absolute token price (tokenprice(USDT) * (10**6))
         uint256 TokenAbsoluteUsdtPrice;
         //If the team vesting data, should be free participation vesting for only to specific addresses
-        bool IsFree;
+        uint256 IsFree;
     }
 
     //Checks whether the specific ICO sale is active or not
@@ -150,7 +207,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         usdtWallet = _usdtWallet;
         tenetWallet = _tenetWallet;
         totalAllocation = 0;
-        vestingContract = Vesting(_vestingContract);
+        vestingContract = IVesting(_vestingContract);
     }
 
     /*
@@ -161,6 +218,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
      * @param _unlockRate Unlock rate of the ICO sale.
      * @param _startDate Start date of the ICO sale.
      * @param _tokenAbsoluteUsdtPrice Absolute token price.
+     * @param _isFree Specify if the sale is for team(free) or not.
      */
     function createICO(
         string memory _name,
@@ -170,9 +228,9 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         uint8 _unlockRate,
         uint256 _startDate,
         uint256 _tokenAbsoluteUsdtPrice, //0 if free
-        bool _isFree //true if free
+        uint256 _isFree //1 if free, 0 if not-free
     ) external onlyOwner {
-        if (!_isFree) {
+        if (_isFree == 0) {
             require(
                 _tokenAbsoluteUsdtPrice > 0,
                 "ERROR at createICO: Token price should be bigger than zero."
@@ -228,7 +286,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             "ERROR at buyTokens: Token price is 0."
         ); //
         require(
-            !ico.IsFree,
+            ico.IsFree == 0,
             "ERROR at buyTokens: This token distribution is exclusive to the team only."
         );
         //require(ico.ICOstartDate != 0,"ERROR at buyTokens: Ico does not exist.");
@@ -265,7 +323,6 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             uint256 totalVestingAllocation = (tokenAmount -
                 (ico.ICOunlockRate * tokenAmount) /
                 100);
-
             vestingContract.increaseCliffAndVestingAllocation(
                 beneficiary,
                 _icoType,
@@ -306,7 +363,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             "ERROR at addingTeamMemberToVesting: Token price is not 0."
         ); //
         require(
-            ico.IsFree,
+            ico.IsFree == 1,
             "ERROR at addingTeamParticipant: Please give correct sale type."
         );
         //require(ico.ICOstartDate != 0,"ERROR at addingTeamParticipant: Ico does not exist.");
@@ -354,7 +411,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         isClaimAvailable(_icoType)
     {
         address beneficiary = msg.sender;
-        require(!ICOdatas[_icoType].IsFree, "ERROR at claimAsToken");
+        require(ICOdatas[_icoType].IsFree == 0, "ERROR at claimAsToken");
         require(
             isIcoMember[beneficiary][_icoType],
             "ERROR at claimAsToken: You are not the member of this sale."
@@ -393,7 +450,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
                 keccak256(abi.encodePacked("public")),
             "ERROR at claimAsUsdt: Claim as USDT is available only the sale is public."
         );
-        require(!ICOdatas[_icoType].IsFree, "ERROR at claimAsUsdt");
+        require(ICOdatas[_icoType].IsFree == 0, "ERROR at claimAsUsdt");
         require(
             isIcoMember[beneficiary][_icoType],
             "ERROR at claimAsUsdt: You are not the member of this sale."
@@ -425,7 +482,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
         isClaimAvailable(_icoType)
     {
         address beneficiary = msg.sender;
-        require(ICOdatas[_icoType].IsFree, "ERROR at claimTeamVesting");
+        require(ICOdatas[_icoType].IsFree == 1, "ERROR at claimTeamVesting");
         require(
             isIcoMember[beneficiary][_icoType],
             "ERROR at claimTeamVesting: You are not the member of this sale."
@@ -744,7 +801,7 @@ contract Crowdsale is ReentrancyGuard, Ownable {
             _newVestingContractAddress != address(0),
             "ERROR at Crowdsale setVestingContractAddress: Vesting contract address shouldn't be zero address."
         );
-        vestingContract = Vesting(_newVestingContractAddress);
+        vestingContract = IVesting(_newVestingContractAddress);
     }
 
     function setUsdtContractAddress(address _newUsdtContractAddress)
