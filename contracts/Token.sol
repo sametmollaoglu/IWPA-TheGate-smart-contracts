@@ -4,7 +4,9 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract IWPA is ERC20 {
-    constructor() ERC20("iwpa", "IWPA") {
-        _mint(msg.sender, 1000000000000000000000000000);
+    constructor(string memory _name,
+        string memory _symbol,
+        uint256 _supply) ERC20(_name, _symbol) {
+        _mint(msg.sender, _supply);
     }
 }
