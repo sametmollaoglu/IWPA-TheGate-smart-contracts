@@ -17,6 +17,10 @@ contract Vesting is Ownable {
         token = ERC20(tokenAddress);
     }
 
+    receive() external payable {}
+
+    fallback() external payable {}
+
 /*
  * @MODIFIERS
 */

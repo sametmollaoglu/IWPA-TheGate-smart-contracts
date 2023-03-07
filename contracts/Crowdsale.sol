@@ -193,8 +193,12 @@ contract Crowdsale is Ownable {
         vestingContract = IVesting(_vestingContract);
     }
 
+    receive() external payable {}
+
+    fallback() external payable {}
+
     function createICO(
-        string memory _name,
+        string calldata _name,
         uint256 _supply,
         uint256 _cliffMonths,
         uint256 _vestingMonths,
@@ -477,8 +481,8 @@ contract Crowdsale is Ownable {
     /*
      * @dev Owner can add multiple addresses to whitelist.
      */
-    function addToWhitelist(address[] memory _beneficiaries, uint256 _icoType)
-        public
+    function addToWhitelist(address[] calldata _beneficiaries, uint256 _icoType)
+        external 
         onlyOwner
     {
         for (uint256 i = 0; i < _beneficiaries.length; i++) {
