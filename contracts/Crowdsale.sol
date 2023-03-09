@@ -21,10 +21,10 @@ interface IVesting {
         uint256 investedUSDT;
     }
 
-    function getBeneficiaryVesting(address beneficiary, uint256 icoType)
-        external 
-        view
-        returns (VestingScheduleStruct memory);
+    function getBeneficiaryVesting(
+        address beneficiary,
+        uint256 icoType
+    ) external view returns (VestingScheduleStruct memory);
 
     function createVestingSchedule(
         address _beneficiary,
@@ -38,7 +38,7 @@ interface IVesting {
     ) external;
 
     function vestingRevocation(
-        address _beneficiary, 
+        address _beneficiary,
         uint256 _icoType,
         uint256 notVestedTokenAllocation
     ) external;
@@ -51,14 +51,13 @@ interface IVesting {
         uint256 _usdtAmount
     ) external;
 
-    function getReleasableAmount(address _beneficiary, uint256 _icoType)
-        external
-        returns (uint256);
-    
+    function getReleasableAmount(
+        address _beneficiary,
+        uint256 _icoType
+    ) external returns (uint256);
 }
 
 contract Crowdsale is Ownable {
-
     // Address where funds are collected as USDT
     address payable public usdtWallet;
 
@@ -74,11 +73,11 @@ contract Crowdsale is Ownable {
     mapping(uint256 => mapping(address => bool)) private whitelist;
     mapping(address => mapping(uint256 => bool)) private isIcoMember;
     mapping(uint256 => address[]) private icoMembers;
-    
-/*
-* @EVENTS  
-*/
-//////////////////////////////////////////////////////////////////////////////////////////
+
+    /*
+     * @EVENTS
+     */
+    //////////////////////////////////////////////////////////////////////////////////////////
     event processPurchaseTokenEvent(
         address _beneficiary,
         uint256 _icoType,
@@ -87,30 +86,43 @@ contract Crowdsale is Ownable {
 
     event priceChanged(string ICOname, uint256 oldPrice, uint256 newPrice);
 
-    event createICOEvent(uint256 totalTokenAllocation, uint256 ICOsupply, uint256 totalTokenSupply);
+    event createICOEvent(
+        uint256 totalTokenAllocation,
+        uint256 ICOsupply,
+        uint256 totalTokenSupply
+    );
 
-    event updatePurchasingStateEvent(uint256 _icoType, string ICOname, uint256 ICOsupply, uint256 newICOtokenAllocated, uint256 tokenAmount, uint256 newICOusdtRaised, uint256 usdtAmount);
-//////////////////////////////////////////////////////////////////////////////////////////
+    event updatePurchasingStateEvent(
+        uint256 _icoType,
+        string ICOname,
+        uint256 ICOsupply,
+        uint256 newICOtokenAllocated,
+        uint256 tokenAmount,
+        uint256 newICOusdtRaised,
+        uint256 usdtAmount
+    );
+    //////////////////////////////////////////////////////////////////////////////////////////
 
-/*
-* @MODIFIERS
-*/
-//////////////////////////////////////////////////////////////////////////////////////////
+    /*
+     * @MODIFIERS
+     */
+    //////////////////////////////////////////////////////////////////////////////////////////
 
     //Checks whether the specific ICO sale is active or not
     modifier isSaleAvailable(uint256 _icoType) {
         ICOdata memory ico = ICOdatas[_icoType];
         require(ico.ICOstartDate != 0, "Ico does not exist !");
+        require(ico.ICOstartDate >= block.timestamp, "ICO date expired.");
         require(
-            ico.ICOstartDate >= block.timestamp,
-            "ICO date expired."
-        );
-        require(
-            ico.ICOstate == IcoState.active || ico.ICOstate == IcoState.onlyWhitelist,
+            ico.ICOstate == IcoState.active ||
+                ico.ICOstate == IcoState.onlyWhitelist,
             "Sale not available"
         );
         if (ico.ICOstate == IcoState.onlyWhitelist) {
-            require(whitelist[_icoType][msg.sender], "Member is not in the whitelist");
+            require(
+                whitelist[_icoType][msg.sender],
+                "Member is not in the whitelist"
+            );
         }
         _;
     }
@@ -120,7 +132,7 @@ contract Crowdsale is Ownable {
         ICOdata memory ico = ICOdatas[_icoType];
 
         require(ico.ICOstartDate != 0, "Ico does not exist !");
-        
+
         require(
             ico.ICOstate != IcoState.nonActive,
             "Claim is currently stopped."
@@ -128,7 +140,7 @@ contract Crowdsale is Ownable {
         _;
     }
 
-//////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////
 
     //State of ICO sales
     enum IcoState {
@@ -207,7 +219,7 @@ contract Crowdsale is Ownable {
         uint256 _tokenAbsoluteUsdtPrice, //Absolute token price (tokenprice(USDT) * (10**18)), 0 if free
         uint256 _isFree //1 if free, 0 if not-free
     ) external onlyOwner {
-        if (_isFree==0) {
+        if (_isFree == 0) {
             require(
                 _tokenAbsoluteUsdtPrice > 0,
                 "ERROR at createICO: Token price should be bigger than zero."
@@ -218,7 +230,8 @@ contract Crowdsale is Ownable {
             "ERROR at createICO: Start date must be greater than now."
         );
         require(
-            totalAllocation + _supply <= (token.balanceOf(msg.sender)/(10**token.decimals())),
+            totalAllocation + _supply <=
+                (token.balanceOf(msg.sender) / (10 ** token.decimals())),
             "ERROR at createICO: Cannot create sale round because not sufficient tokens."
         );
         totalAllocation += _supply;
@@ -239,7 +252,11 @@ contract Crowdsale is Ownable {
                 IsFree: _isFree
             })
         );
-        emit createICOEvent(totalAllocation,_supply,token.balanceOf(msg.sender));
+        emit createICOEvent(
+            totalAllocation,
+            _supply,
+            token.balanceOf(msg.sender)
+        );
     }
 
     /**
@@ -247,10 +264,10 @@ contract Crowdsale is Ownable {
      * @param _icoType Ico type  ex.: 0=>seed, 1=>private
      * @param _usdtAmount Amount of invested USDT
      */
-    function buyTokens(uint256 _icoType, uint256 _usdtAmount)
-        public 
-        isSaleAvailable(_icoType)
-    {
+    function buyTokens(
+        uint256 _icoType,
+        uint256 _usdtAmount
+    ) public isSaleAvailable(_icoType) {
         ICOdata memory ico = ICOdatas[_icoType];
         address beneficiary = msg.sender;
 
@@ -282,7 +299,6 @@ contract Crowdsale is Ownable {
                 ico.ICOstartDate
             );
         } else {
-
             require(
                 !vestingContract
                     .getBeneficiaryVesting(beneficiary, _icoType)
@@ -301,7 +317,6 @@ contract Crowdsale is Ownable {
                 totalVestingAllocation,
                 _usdtAmount
             );
-
         }
 
         _updatePurchasingState(_usdtAmount, tokenAmount, _icoType);
@@ -322,14 +337,14 @@ contract Crowdsale is Ownable {
         uint256 _tokenAmount
     ) public onlyOwner isSaleAvailable(_icoType) {
         ICOdata memory ico = ICOdatas[_icoType];
-        
+
         require(
-            ico.IsFree==1,
+            ico.IsFree == 1,
             "ERROR at addingTeamParticipant: Please give correct sale type."
         );
-        
+
         _preValidatePurchase(_beneficiary, _tokenAmount, _icoType);
-        
+
         require(
             !isIcoMember[_beneficiary][_icoType],
             "ERROR at addingTeamParticipant: Beneficiary has already own vesting schedule."
@@ -348,16 +363,12 @@ contract Crowdsale is Ownable {
         _updatePurchasingState(0, _tokenAmount, _icoType);
         isIcoMember[_beneficiary][_icoType] = true;
         icoMembers[_icoType].push(address(_beneficiary));
-
     }
-    
+
     /**
      * @dev Client function. Buyer can claim vested tokens according to own vesting schedule.
      */
-    function claimAsToken(uint256 _icoType)
-        public
-        isClaimAvailable(_icoType)
-    {
+    function claimAsToken(uint256 _icoType) public isClaimAvailable(_icoType) {
         address beneficiary = msg.sender;
 
         require(
@@ -383,11 +394,11 @@ contract Crowdsale is Ownable {
         ICOdatas[_icoType].ICOtokenSold += releasableAmount;
     }
 
-    
     function revoke(address _beneficiary, uint256 _icoType) external onlyOwner {
-        IVesting.VestingScheduleStruct memory vestingSchedule = vestingContract.getBeneficiaryVesting(_beneficiary,_icoType);
+        IVesting.VestingScheduleStruct memory vestingSchedule = vestingContract
+            .getBeneficiaryVesting(_beneficiary, _icoType);
         ICOdata storage icoData = ICOdatas[_icoType];
-        
+
         require(
             vestingSchedule.icoStartDate != 0,
             "ERROR at revoke: Vesting does not exist."
@@ -401,26 +412,36 @@ contract Crowdsale is Ownable {
         uint256 notVestedTokenAllocation = 0;
 
         //ico is not started yet
-        if(block.timestamp < vestingSchedule.icoStartDate){
-            icoData.ICOtokenAllocated -= vestingSchedule.cliffAndVestingAllocation;
+        if (block.timestamp < vestingSchedule.icoStartDate) {
+            icoData.ICOtokenAllocated -= vestingSchedule
+                .cliffAndVestingAllocation;
         }
-        //ico is started, not vested amount calc must be done 
-        else{
-            uint256 releasableAmount = vestingContract.getReleasableAmount(_beneficiary, _icoType);
+        //ico is started, not vested amount calc must be done
+        else {
+            uint256 releasableAmount = vestingContract.getReleasableAmount(
+                _beneficiary,
+                _icoType
+            );
 
             //if any vested tokens exist, transfers
-            if(releasableAmount > 0){
+            if (releasableAmount > 0) {
                 _processPurchaseToken(_beneficiary, _icoType, releasableAmount);
                 icoData.ICOtokenSold += releasableAmount;
             }
 
             //not vested tokens calculated to reallocate icodata allocation
-            if(vestingSchedule.cliffAndVestingAllocation > vestingSchedule.claimedTokenAmount+releasableAmount){
-                notVestedTokenAllocation += (vestingSchedule.cliffAndVestingAllocation - vestingSchedule.claimedTokenAmount - releasableAmount);
+            if (
+                vestingSchedule.cliffAndVestingAllocation >
+                vestingSchedule.claimedTokenAmount + releasableAmount
+            ) {
+                notVestedTokenAllocation += (vestingSchedule
+                    .cliffAndVestingAllocation -
+                    vestingSchedule.claimedTokenAmount -
+                    releasableAmount);
             }
 
             icoData.ICOtokenAllocated -= notVestedTokenAllocation;
-            
+
             /*
             //to check any deviation 
             if(icoData.ICOtokenAllocated > notVestedTokenAllocation){
@@ -430,16 +451,20 @@ contract Crowdsale is Ownable {
             }*/
         }
         //vesting schedule structında değişiklikler yapılmak üzere çağrılır.
-        vestingContract.vestingRevocation(_beneficiary,_icoType,notVestedTokenAllocation);
+        vestingContract.vestingRevocation(
+            _beneficiary,
+            _icoType,
+            notVestedTokenAllocation
+        );
     }
 
     /**
      * @dev Changes sale round state.
      */
-    function changeIcoState(uint256 _icoType, IcoState _icoState)
-        external
-        onlyOwner
-    {
+    function changeIcoState(
+        uint256 _icoType,
+        IcoState _icoState
+    ) external onlyOwner {
         ICOdata storage ico = ICOdatas[_icoType];
 
         require(ico.ICOstartDate != 0, "Ico does not exist !");
@@ -447,21 +472,20 @@ contract Crowdsale is Ownable {
         ico.ICOstate = _icoState;
 
         if (_icoState == IcoState.done) {
-            uint256 saleLeftover= ico.ICOsupply -
-                ico.ICOtokenAllocated;
+            uint256 saleLeftover = ico.ICOsupply - ico.ICOtokenAllocated;
 
             ico.ICOsupply -= saleLeftover;
-            totalLeftover +=saleLeftover;
+            totalLeftover += saleLeftover;
         }
     }
 
     /**
      * @dev Increments the supply of a specified type of ICO round.
      */
-    function increaseIcoSupplyWithLeftover(uint256 _icoType, uint256 amount)
-        external
-        onlyOwner
-    {
+    function increaseIcoSupplyWithLeftover(
+        uint256 _icoType,
+        uint256 amount
+    ) external onlyOwner {
         require(
             ICOdatas[_icoType].ICOstartDate != 0,
             "ERROR at increaseIcoSupplyWithLeftover: Ico does not exist."
@@ -481,12 +505,15 @@ contract Crowdsale is Ownable {
     /*
      * @dev Owner can add multiple addresses to whitelist.
      */
-    function addToWhitelist(address[] calldata _beneficiaries, uint256 _icoType)
-        external 
-        onlyOwner
-    {
+    function addToWhitelist(
+        address[] calldata _beneficiaries,
+        uint256 _icoType
+    ) external onlyOwner {
         for (uint256 i = 0; i < _beneficiaries.length; i++) {
-            require(!isWhitelisted(_beneficiaries[i], _icoType), "Already whitelisted");
+            require(
+                !isWhitelisted(_beneficiaries[i], _icoType),
+                "Already whitelisted"
+            );
             whitelist[_icoType][_beneficiaries[i]] = true;
         }
     }
@@ -512,10 +539,7 @@ contract Crowdsale is Ownable {
      * @dev Owner function. Set usdt wallet address.
      * @param _usdtWallet New USDT wallet address.
      */
-    function setUSDTWallet(address payable _usdtWallet)
-        public
-        onlyOwner
-    {
+    function setUSDTWallet(address payable _usdtWallet) public onlyOwner {
         require(
             _usdtWallet != address(0),
             "ERROR at Crowdsale setUSDTWallet: USDT wallet address shouldn't be zero."
@@ -539,10 +563,7 @@ contract Crowdsale is Ownable {
      * @dev Owner function. Change vesting contract address.
      * @param _vesting New vesting contract address.
      */
-    function setVestingContract(address _vesting)
-        external
-        onlyOwner
-    {
+    function setVestingContract(address _vesting) external onlyOwner {
         require(
             _vesting != address(0),
             "ERROR at Crowdsale setVestingContract: Vesting contract address shouldn't be zero address."
@@ -550,10 +571,7 @@ contract Crowdsale is Ownable {
         vestingContract = IVesting(_vesting);
     }
 
-    function setUsdtContract(address _usdt)
-        external
-        onlyOwner
-    {
+    function setUsdtContract(address _usdt) external onlyOwner {
         require(
             _usdt != address(0),
             "ERROR at Crowdsale setUsdtContract: Usdt contract address shouldn't be zero address."
@@ -561,10 +579,10 @@ contract Crowdsale is Ownable {
         usdt = ERC20(_usdt);
     }
 
-/*
-* @INTERNALS
-*/
-//////////////////////////////////////////////////////////////////////////////////////////
+    /*
+     * @INTERNALS
+     */
+    //////////////////////////////////////////////////////////////////////////////////////////
 
     /**
      * @dev Validation of an incoming purchase request. Use require statements to revert state when conditions are not met.
@@ -597,8 +615,16 @@ contract Crowdsale is Ownable {
         uint256 _icoType,
         uint256 _releasableAmount
     ) internal {
-        token.transferFrom(owner(), _beneficiary, _releasableAmount*(10**token.decimals()));
-        emit processPurchaseTokenEvent(_beneficiary, _icoType, _releasableAmount);
+        token.transferFrom(
+            owner(),
+            _beneficiary,
+            _releasableAmount * (10 ** token.decimals())
+        );
+        emit processPurchaseTokenEvent(
+            _beneficiary,
+            _icoType,
+            _releasableAmount
+        );
     }
 
     /**
@@ -616,7 +642,15 @@ contract Crowdsale is Ownable {
         ico.ICOtokenAllocated += _tokenAmount;
         ico.ICOusdtRaised += _usdtAmount;
 
-        emit updatePurchasingStateEvent(_icoType, ico.ICOname, ico.ICOsupply, ico.ICOtokenAllocated, _tokenAmount, ico.ICOusdtRaised, _usdtAmount);
+        emit updatePurchasingStateEvent(
+            _icoType,
+            ico.ICOname,
+            ico.ICOsupply,
+            ico.ICOtokenAllocated,
+            _tokenAmount,
+            ico.ICOusdtRaised,
+            _usdtAmount
+        );
     }
 
     /**
@@ -625,13 +659,12 @@ contract Crowdsale is Ownable {
      * @param _absoluteUsdtPrice Absolute usdt value of token (Actual token usdt price * 10**18)
      * @return Number of tokens that can be purchased with the specified _usdtAmount.
      */
-    function _getTokenAmount(uint256 _usdtAmount, uint256 _absoluteUsdtPrice)
-        internal
-        pure
-        returns (uint256)
-    {
-        _usdtAmount = _usdtAmount * (10**18);
-        _usdtAmount = _usdtAmount/_absoluteUsdtPrice;
+    function _getTokenAmount(
+        uint256 _usdtAmount,
+        uint256 _absoluteUsdtPrice
+    ) internal pure returns (uint256) {
+        _usdtAmount = _usdtAmount * (10 ** 18);
+        _usdtAmount = _usdtAmount / _absoluteUsdtPrice;
         return _usdtAmount;
     }
 
@@ -639,79 +672,72 @@ contract Crowdsale is Ownable {
      * @dev After buy tokens, beneficiary USDT amount transferring to the usdtwallet.
      */
     function _forwardFunds(uint usdtAmount) internal {
-        usdt.transferFrom(msg.sender, usdtWallet, usdtAmount*(10**18));
+        usdt.transferFrom(msg.sender, usdtWallet, usdtAmount * (10 ** 18));
     }
 
-//////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////
 
-/*
- * @VIEWS
-*/
-//////////////////////////////////////////////////////////////////////////////////////////
+    /*
+     * @VIEWS
+     */
+    //////////////////////////////////////////////////////////////////////////////////////////
 
     /**
      * @dev Returns the leftover value.
      */
-    function getLeftover()
-        external
-        view
-        returns (uint256)
-    {
+    function getLeftover() external view returns (uint256) {
         return totalLeftover;
     }
 
-    function isWhitelisted(address _beneficiary, uint256 _icoType)
-        public
-        view
-        returns (bool)
-    {
+    function isWhitelisted(
+        address _beneficiary,
+        uint256 _icoType
+    ) public view returns (bool) {
         return whitelist[_icoType][_beneficiary] == true;
     }
 
     /**
      * @dev Returns the members of the specified ICO round.
      */
-    function getICOMembers(uint256 _icoType)
-        external
-        view
-        returns (address[] memory)
-    {
+    function getICOMembers(
+        uint256 _icoType
+    ) external view returns (address[] memory) {
         return icoMembers[_icoType];
     }
 
     /**
      * @dev Returns details of each vesting stages.
      */
-    function getVestingList(address _beneficiary, uint256 _icoType)
-        external
-        view
-        returns (VestingScheduleData[] memory)
-    {
-        require(isIcoMember[_beneficiary][_icoType] == true,"ERROR at getVestingList: You are not the member of this sale.");
+    function getVestingList(
+        address _beneficiary,
+        uint256 _icoType
+    ) external view returns (VestingScheduleData[] memory) {
+        require(
+            isIcoMember[_beneficiary][_icoType] == true,
+            "ERROR at getVestingList: You are not the member of this sale."
+        );
 
         ICOdata memory icoData = ICOdatas[_icoType];
 
         require(icoData.ICOstartDate != 0, "ICO does not exist");
-        
+
         uint256 size = icoData.ICOnumberOfVesting + 1;
 
         VestingScheduleData[] memory scheduleArr = new VestingScheduleData[](
             size
         );
 
-        IVesting.VestingScheduleStruct memory vesting = vestingContract.getBeneficiaryVesting(
-            _beneficiary,
-            _icoType
-        );
+        IVesting.VestingScheduleStruct memory vesting = vestingContract
+            .getBeneficiaryVesting(_beneficiary, _icoType);
 
         uint256 cliffUnlockDateTimestamp = icoData.ICOstartDate;
 
         uint256 cliffTokenAllocation = (vesting.cliffAndVestingAllocation *
             icoData.ICOunlockRate) / 100;
-        
+
         uint256 cliffUsdtAllocation = (cliffTokenAllocation *
-            icoData.TokenAbsoluteUsdtPrice) / 10**18;
-        
+            icoData.TokenAbsoluteUsdtPrice) / 10 ** 18;
+
         scheduleArr[0] = VestingScheduleData({
             id: 0,
             unlockDateTimestamp: cliffUnlockDateTimestamp,
@@ -748,5 +774,5 @@ contract Crowdsale is Ownable {
         return ICOdatas;
     }
 
-//////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////////
 }

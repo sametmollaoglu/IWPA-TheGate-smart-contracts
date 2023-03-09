@@ -3,18 +3,23 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract usdt is ERC20 {
-    /// @param _name Name of the token
-    /// @param _symbol Symbol for the token
-    /// @param _supply Total token supply
-    constructor(
-        string memory _name,
-        string memory _symbol,
-        uint256 _supply
-    ) ERC20(_name, _symbol) {
-        _mint(0x5B38Da6a701c568545dCfcB03FcB875f56beddC4, _supply / 4);
-        _mint(0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2, _supply / 4);
-        _mint(0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db, _supply / 4);
-        _mint(0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB, _supply / 4);
+contract USDT is ERC20 {
+    constructor() ERC20("Tether Token", "USDT") {
+        _mint(
+            0x38F11b6Df51a1F25015b271f679a25eFF5Aa08C8,
+            10000 * (10 ** decimals())
+        );
+        _mint(
+            0xeCF9B2d5496de6654f0d76f5760215A205779852,
+            10000 * (10 ** decimals())
+        );
+        _mint(
+            0xcd4F8c12a66150596BF89456B213F0eDc90b1308,
+            10000 * (10 ** decimals())
+        );
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
     }
 }
